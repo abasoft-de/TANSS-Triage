@@ -1,0 +1,22 @@
+# Umgebung und Secrets
+.venv/
+.env
+config.toml
+
+# Laufzeitzustand
+state.db
+state.db-journal
+*.log
+*.log.*
+tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Whisper-Modellcache (falls lokal ins Projekt gelegt)
+models/

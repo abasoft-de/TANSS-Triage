@@ -1,0 +1,82 @@
+# Vorlage fuer config.toml - Verhalten von TANSS-Triage.
+#
+# Einrichten:  cp config.example.toml config.toml
+# Secrets (Zugangsdaten, API-Keys) gehoeren NICHT hierher, sondern in .env.
+# Jeder Wert hier zeigt den eingebauten Default - wer nichts aendern will,
+# kann den Eintrag auch weglassen.
+
+[webhook]
+# Wohin TANSS die Event-Webhooks schickt. Das Programm laeuft auf dem
+# TANSS-Server selbst, darum genuegt localhost.
+listen_host = "127.0.0.1"
+listen_port = 8763
+# Shared Secret als Pfadbestandteil der Webhook-URL, weil TANSS-Webhooks
+# keine Signatur mitschicken: http://127.0.0.1:8763/webhook/<secret>
+# Leer = kein Secret (URL ist dann /webhook).
+secret = ""
+
+[audio]
+# Dateiendungen, die als Sprachaufnahme gelten (zusaetzlich zaehlt jeder
+# Anhang mit MIME-Typ audio/*).
+extensions = ["wav", "mp3", "m4a", "ogg", "opus", "flac", "aac", "wma"]
+
+[whisper]
+# Modellname von faster-whisper (tiny, base, small, medium, large-v3, ...).
+# large-v3 laedt beim ersten Start ca. 3 GB in den Modellcache.
+model = "large-v3"
+device = "auto"          # auto | cpu | cuda
+compute_type = "int8"    # int8 ist der CPU-Kompromiss aus Tempo und Qualitaet
+language = "de"
+# Modellcache; leer = Hugging-Face-Default (~/.cache/huggingface).
+download_root = ""
+
+[llm]
+# anthropic | openai_compatible | none
+# Leer = Automatik: "anthropic", wenn ANTHROPIC_API_KEY gesetzt ist,
+# sonst "none" (dann gibt es nur Transkript-Kommentar und Rufnummern-
+# Zuordnung, kein Betreff/Beschreibung-Rewrite).
+provider = ""
+model = "claude-sonnet-5"
+# Nur fuer openai_compatible: Basis-URL des Endpunkts,
+# z. B. "http://localhost:11434/v1" fuer Ollama.
+base_url = ""
+max_tokens = 1500
+timeout = 120
+
+[starface]
+# Eingehende Mails dieser Absender machen ein Ticket zum Starface-Ticket
+# (Teilstring-Vergleich, Gross-/Kleinschreibung egal).
+sender_patterns = ["starface@tele-x.abasoft-gmbh.de"]
+# Betreff wird nur ueberschrieben, solange er noch auf dieses Muster passt -
+# von Kolleg*innen angepasste Betreffe bleiben unangetastet.
+generic_title_pattern = "^Sie haben eine Sprachnachricht"
+# Beschreibung wird nur ersetzt, solange noch einer dieser Teilstrings
+# darin vorkommt (Starface-Boilerplate).
+generic_content_patterns = ["WARNUNG: EXTERNE NACHRICHT", "STARFACE"]
+
+[assignment]
+# Rufnummern-Zuordnung von Starface-Tickets (Firma, ggf. Melder).
+enabled = true
+assign_remitter = true
+
+[db]
+# Read-only-Zugriff auf die TANSS-MariaDB fuer den Mehrfach-Firmen-Check
+# (mitarbeiter_firmen) - dieselbe Zugangsdatei wie der MCP-Server.
+# Leer lassen, um den Check abzuschalten (dann werden Mitarbeiter-Treffer
+# sicherheitshalber NICHT zugeordnet).
+defaults_file = "~/.my.cnf"
+host = "localhost"
+database = "tanss"
+
+[comment]
+# Transkript-Kommentare als "intern" anlegen (Kunden sehen sie nicht).
+internal = true
+
+[state]
+# SQLite-Datei mit den bereits verarbeiteten Dokumenten.
+db_path = "state.db"
+
+[logging]
+level = "INFO"
+# Leer = nur Konsole (unter systemd landet das im Journal).
+file = ""

@@ -1,0 +1,30 @@
+# systemd-Unit fuer TANSS-Triage.
+#
+# Einrichten (als root auf dem TANSS-Server):
+#   cp /home/tanss/listings/TANSS-Triage/deploy/tanss-triage.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now tanss-triage
+#   journalctl -u tanss-triage -f
+
+[Unit]
+Description=TANSS-Triage - Voicemail-Transkription und Ticket-Aufbereitung
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tanss
+Group=tanss
+WorkingDirectory=/home/tanss/listings/TANSS-Triage
+ExecStart=/home/tanss/listings/TANSS-Triage/.venv/bin/python -m tanss_triage
+Restart=on-failure
+RestartSec=10
+# Whisper large-v3 braucht beim Laden kurz viel Speicher; kein OOM-Kill
+# beim Start wegen ein paar Sekunden Spitze.
+TimeoutStartSec=300
+# .env liegt neben dem Programm und wird von dotenv geladen - systemd braucht
+# sie nicht extra, schadet aber auch nicht, falls jemand Werte nur dort pflegt.
+EnvironmentFile=-/home/tanss/listings/TANSS-Triage/.env
+
+[Install]
+WantedBy=multi-user.target
