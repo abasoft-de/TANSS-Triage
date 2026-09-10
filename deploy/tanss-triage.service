@@ -1,4 +1,4 @@
-# systemd-Unit fuer TANSS-Triage.
+# systemd-Unit für TANSS-Triage.
 #
 # Einrichten (als root auf dem TANSS-Server):
 #   cp /home/tanss/listings/TANSS-Triage/deploy/tanss-triage.service /etc/systemd/system/

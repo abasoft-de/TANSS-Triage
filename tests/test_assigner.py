@@ -3,9 +3,9 @@ Usage: pytest tests/test_assigner.py
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: test_assigner.py
-Beschreibung: Prueft die Zuordnungsregeln gegen nachgebaute Antworten von
+Beschreibung: Prüft die Zuordnungsregeln gegen nachgebaute Antworten von
               POST /api/v1/phoneCalls/identify.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 from tanss_triage.assigner import decide_assignment
@@ -16,72 +16,72 @@ def _identify(found_type, items):
                                  "result": items[0] if items else None}}
 
 
-def _einzelfirma(_employee_id):
+def _single_company(_employee_id):
     return False
 
 
-def test_firma_eindeutig():
+def test_unique_company_is_assigned():
     content = _identify("COMPANY", [
         {"type": "COMPANY", "id": 654, "name": "Schaal", "charsLeftOut": 3}])
-    assignment = decide_assignment(content, _einzelfirma)
+    assignment = decide_assignment(content, _single_company)
     assert assignment.company_id == 654
     assert assignment.remitter_id is None
 
 
-def test_mehrere_firmen_keine_zuordnung():
+def test_multiple_companies_no_assignment():
     content = _identify("COMPANY", [
         {"type": "COMPANY", "id": 654, "charsLeftOut": 3},
         {"type": "COMPANY", "id": 655, "charsLeftOut": 2}])
-    assignment = decide_assignment(content, _einzelfirma)
+    assignment = decide_assignment(content, _single_company)
     assert not assignment.has_change
 
 
-def test_mitarbeiter_mit_durchwahl_wird_melder():
+def test_employee_with_direct_number_becomes_remitter():
     content = _identify("EMPLOYEE", [
         {"type": "EMPLOYEE", "id": 42, "name": "Duft, Petra",
          "companyId": 94, "charsLeftOut": 0}])
-    assignment = decide_assignment(content, _einzelfirma)
+    assignment = decide_assignment(content, _single_company)
     assert assignment.company_id == 94
     assert assignment.remitter_id == 42
 
 
-def test_firmennummer_beim_mitarbeiter_nur_firma():
+def test_company_number_on_employee_assigns_company_only():
     # Dieselbe Nummer matcht Mitarbeiter UND Firma exakt -> Zentrale,
     # also nur die Firma zuweisen.
     content = _identify("EMPLOYEE", [
         {"type": "EMPLOYEE", "id": 42, "companyId": 94, "charsLeftOut": 0},
         {"type": "COMPANY", "id": 94, "charsLeftOut": 0}])
-    assignment = decide_assignment(content, _einzelfirma)
+    assignment = decide_assignment(content, _single_company)
     assert assignment.company_id == 94
     assert assignment.remitter_id is None
 
 
-def test_mitarbeiter_nur_per_durchwahlschnitt_kein_melder():
+def test_employee_matched_by_truncation_no_remitter():
     content = _identify("EMPLOYEE", [
         {"type": "EMPLOYEE", "id": 42, "companyId": 94, "charsLeftOut": 3}])
-    assignment = decide_assignment(content, _einzelfirma)
+    assignment = decide_assignment(content, _single_company)
     assert assignment.company_id == 94
     assert assignment.remitter_id is None
 
 
-def test_mehrere_mitarbeiter_gleiche_firma_nur_firma():
+def test_multiple_employees_same_company_assigns_company_only():
     content = _identify("EMPLOYEE", [
         {"type": "EMPLOYEE", "id": 42, "companyId": 94, "charsLeftOut": 0},
         {"type": "EMPLOYEE", "id": 43, "companyId": 94, "charsLeftOut": 0}])
-    assignment = decide_assignment(content, _einzelfirma)
+    assignment = decide_assignment(content, _single_company)
     assert assignment.company_id == 94
     assert assignment.remitter_id is None
 
 
-def test_mehrere_mitarbeiter_verschiedene_firmen_nichts():
+def test_multiple_employees_different_companies_no_assignment():
     content = _identify("EMPLOYEE", [
         {"type": "EMPLOYEE", "id": 42, "companyId": 94, "charsLeftOut": 0},
         {"type": "EMPLOYEE", "id": 43, "companyId": 95, "charsLeftOut": 0}])
-    assignment = decide_assignment(content, _einzelfirma)
+    assignment = decide_assignment(content, _single_company)
     assert not assignment.has_change
 
 
-def test_mitarbeiter_in_mehreren_firmen_nichts():
+def test_employee_in_multiple_companies_no_assignment():
     content = _identify("EMPLOYEE", [
         {"type": "EMPLOYEE", "id": 42, "companyId": 94, "charsLeftOut": 0}])
     assignment = decide_assignment(content, lambda _id: True)
@@ -89,33 +89,34 @@ def test_mitarbeiter_in_mehreren_firmen_nichts():
     assert "mehreren Firmen" in assignment.note
 
 
-def test_db_nicht_erreichbar_failsafe():
+def test_db_unreachable_is_failsafe():
     content = _identify("EMPLOYEE", [
         {"type": "EMPLOYEE", "id": 42, "companyId": 94, "charsLeftOut": 0}])
     assignment = decide_assignment(content, lambda _id: None)
     assert not assignment.has_change
 
 
-def test_assign_remitter_abschaltbar():
+def test_assign_remitter_can_be_disabled():
     content = _identify("EMPLOYEE", [
         {"type": "EMPLOYEE", "id": 42, "companyId": 94, "charsLeftOut": 0}])
-    assignment = decide_assignment(content, _einzelfirma,
+    assignment = decide_assignment(content, _single_company,
                                    assign_remitter=False)
     assert assignment.company_id == 94
     assert assignment.remitter_id is None
 
 
-def test_unbekannte_nummer_nichts():
-    assignment = decide_assignment(_identify("NONE", []), _einzelfirma)
+def test_unknown_number_no_assignment():
+    assignment = decide_assignment(_identify("NONE", []), _single_company)
     assert not assignment.has_change
-    assignment = decide_assignment(_identify("TOO_SHORT", []), _einzelfirma)
+    assignment = decide_assignment(_identify("TOO_SHORT", []),
+                                   _single_company)
     assert not assignment.has_change
 
 
-def test_inaktiver_mitarbeiter_nur_firma():
+def test_inactive_employee_assigns_company_only():
     content = _identify("EMPLOYEE_INACTIVE", [
         {"type": "EMPLOYEE_INACTIVE", "id": 42, "companyId": 94,
          "charsLeftOut": 0}])
-    assignment = decide_assignment(content, _einzelfirma)
+    assignment = decide_assignment(content, _single_company)
     assert assignment.company_id == 94
     assert assignment.remitter_id is None

@@ -3,16 +3,16 @@ Usage: from tanss_triage.processor import Processor
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: processor.py
-Beschreibung: Verarbeitet ein einzelnes Ticket: Audio-Anhaenge finden,
+Beschreibung: Verarbeitet ein einzelnes Ticket: Audio-Anhänge finden,
               herunterladen, mit Whisper transkribieren, Transkript als
               Kommentar anlegen. Ist es ein Starface-Voicemail-Ticket, kommen
               Rufnummern-Zuordnung (Firma/Melder) und - falls ein LLM
               konfiguriert ist - Betreff und Beschreibung dazu. Der
-              Ueberschreib-Schutz sorgt dafuer, dass manuell angepasste
+              Überschreib-Schutz sorgt dafür, dass manuell angepasste
               Tickets nicht angefasst werden: der Betreff wird nur ersetzt,
               solange er noch generisch ist, die Beschreibung nur, solange
               die Starface-Boilerplate darin steht.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 import logging
@@ -37,8 +37,8 @@ def comment_marker(document_id):
 def find_audio_documents(documents, extensions):
     """Filtert die Ticket-Dokumente auf Sprachaufnahmen.
 
-    Es zaehlt die Dateiendung ODER ein audio/*-MIME-Typ - das Starface-Mail
-    haengt neben der WAV auch Inline-Bilder an (SF_M_IMG_0), die hier
+    Es zählt die Dateiendung ODER ein audio/*-MIME-Typ - das Starface-Mail
+    hängt neben der WAV auch Inline-Bilder an (SF_M_IMG_0), die hier
     rausfallen.
     """
     wanted = {extension.lower().lstrip(".") for extension in extensions}
@@ -68,9 +68,9 @@ def extract_caller_info(mail):
     """Zieht Anrufernummer und Voicemail-Box aus der Starface-Mail.
 
     Betreff: "Sie haben eine Sprachnachricht von <Name?> <Nummer> in <Box>
-    erhalten" - vor der Nummer kann ein aufgeloester Name samt Klammern
+    erhalten" - vor der Nummer kann ein aufgelöster Name samt Klammern
     stehen, darum gilt: die letzte lange Ziffernfolge vor " in " ist die
-    Nummer. Faellt der Betreff aus, hilft der Mailtext ("Sprachmitteilung
+    Nummer. Fällt der Betreff aus, hilft der Mailtext ("Sprachmitteilung
     von <Nummer>", "Voicemail-Box <Box> der STARFACE").
     """
     subject = (mail or {}).get("subject") or ""
@@ -127,7 +127,7 @@ def format_duration(seconds):
 
 
 class Processor:
-    """Verdrahtet Client, Whisper, LLM und State fuer je ein Ticket."""
+    """Verdrahtet Client, Whisper, LLM und State für je ein Ticket."""
 
     def __init__(self, cfg, client, transcriber, llm, state,
                  is_multi_company):
@@ -141,12 +141,12 @@ class Processor:
     # -- Hauptablauf
 
     def process_ticket(self, ticket_id):
-        """Verarbeitet ein Ticket vollstaendig; unkritische Fehler landen im Log."""
+        """Verarbeitet ein Ticket vollständig; unkritische Fehler landen im Log."""
         documents = self.client.get_documents(ticket_id)
         audio_documents = find_audio_documents(documents,
                                                self.cfg.audio.extensions)
         if not audio_documents:
-            LOG.debug("Ticket %d hat keine Audio-Anhaenge.", ticket_id)
+            LOG.debug("Ticket %d hat keine Audio-Anhänge.", ticket_id)
             return
 
         history = self.client.get_ticket_history(ticket_id)
@@ -161,9 +161,9 @@ class Processor:
                 LOG.debug("Dokument %s schon verarbeitet (State).", document_id)
                 continue
             if history_has_marker(history, document_id):
-                LOG.info("Dokument %s traegt schon einen Marker-Kommentar - "
+                LOG.info("Dokument %s trägt schon einen Marker-Kommentar - "
                          "wird nur im State nachgetragen.", document_id)
-                self.state.mark_done(document_id, ticket_id, "marker gefunden")
+                self.state.mark_done(document_id, ticket_id, "Marker gefunden")
                 continue
             try:
                 transcript = self._transcribe_document(ticket_id, document)
@@ -172,7 +172,7 @@ class Processor:
                                                str(error))
                 LOG.exception("Dokument %s von Ticket %d fehlgeschlagen%s.",
                               document_id, ticket_id,
-                              "" if retry else " (endgueltig aufgegeben)")
+                              "" if retry else " (endgültig aufgegeben)")
                 continue
             transcripts.append((document, transcript))
 
@@ -198,7 +198,7 @@ class Processor:
                         for employee in self.client.get_company_employees(
                             assignment.company_id)]
                 except Exception as error:
-                    LOG.warning("Ansprechpartnerliste fuer Firma %s nicht "
+                    LOG.warning("Ansprechpartnerliste für Firma %s nicht "
                                 "ladbar: %s", assignment.company_id, error)
             combined = "\n\n".join(transcript.text
                                    for _, transcript in transcripts)
@@ -240,7 +240,7 @@ class Processor:
     # -- Teilschritte
 
     def _transcribe_document(self, ticket_id, document):
-        """Laedt ein Dokument in ein Temp-Verzeichnis und transkribiert es."""
+        """Lädt ein Dokument in ein Temp-Verzeichnis und transkribiert es."""
         name = document.get("fileName") or ("dokument-%s" % document.get("id"))
         with tempfile.TemporaryDirectory(prefix="tanss-triage-") as directory:
             path = os.path.join(directory, os.path.basename(name))
@@ -254,7 +254,7 @@ class Processor:
         try:
             identified = self.client.identify_phone_number(caller_number)
         except Exception as error:
-            LOG.warning("Rufnummern-Identifikation fuer %s fehlgeschlagen: %s",
+            LOG.warning("Rufnummern-Identifikation für %s fehlgeschlagen: %s",
                         caller_number, error)
             return Assignment(note="Rufnummern-Identifikation fehlgeschlagen.")
         return decide_assignment(
@@ -262,10 +262,10 @@ class Processor:
             assign_remitter=self.cfg.assignment.assign_remitter)
 
     def _build_update(self, ticket, is_starface, assignment, triage_result):
-        """Baut das PUT-Objekt; None, wenn nichts zu aendern ist.
+        """Baut das PUT-Objekt; None, wenn nichts zu ändern ist.
 
         Nur Starface-Tickets werden angefasst - und auch dort gilt der
-        Ueberschreib-Schutz fuer Betreff und Beschreibung.
+        Überschreib-Schutz für Betreff und Beschreibung.
         """
         if not is_starface:
             return None, []
@@ -324,8 +324,8 @@ class Processor:
             if assignment.note:
                 lines.append("Zuordnung: %s" % assignment.note)
             if update_notes:
-                lines.append("Ticket-Aenderungen: %s" % ", ".join(update_notes))
+                lines.append("Ticket-Änderungen: %s" % ", ".join(update_notes))
                 if any(note == "Betreff gesetzt" for note in update_notes):
-                    lines.append("Urspruenglicher Betreff: %s"
+                    lines.append("Ursprünglicher Betreff: %s"
                                  % (ticket.get("title") or ""))
         return title, "\n".join(lines)

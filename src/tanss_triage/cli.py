@@ -1,6 +1,5 @@
 """
-Usage: python -m tanss_triage [--once-Optionen]
-       python -m tanss_triage                        # Webhook-Server (Betrieb)
+Usage: python -m tanss_triage                        # Webhook-Server (Betrieb)
        python -m tanss_triage --ticket 250312 --dry-run
        python -m tanss_triage --identify 07432994360
        python -m tanss_triage --register-webhook http://127.0.0.1:8763/webhook
@@ -10,9 +9,9 @@ Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: cli.py
 Beschreibung: Kommandozeile von TANSS-Triage. Ohne Optionen startet der
               Dauerbetrieb: Webhook-Server plus Worker, sauberes Ende bei
-              SIGTERM/SIGINT (systemd). Die uebrigen Kommandos sind
-              Einzellaeufe fuer Test, Diagnose und Einrichtung.
-Letzte Aenderung: 2026-09-10
+              SIGTERM/SIGINT (systemd). Die übrigen Kommandos sind
+              Einzelläufe für Test, Diagnose und Einrichtung.
+Letzte Änderung: 2026-09-10
 """
 
 import argparse
@@ -52,7 +51,7 @@ def build_parser():
     mode.add_argument("--ticket", type=int, metavar="ID",
                       help="nur dieses Ticket verarbeiten und beenden")
     mode.add_argument("--identify", metavar="NUMMER",
-                      help="Rufnummer aufloesen und die rohe Antwort zeigen")
+                      help="Rufnummer auflösen und die rohe Antwort zeigen")
     mode.add_argument("--register-webhook", metavar="URL",
                       help="Event-Regel mit WEBHOOK-Aktion in TANSS anlegen")
     mode.add_argument("--list-webhooks", action="store_true",
@@ -127,7 +126,7 @@ def main(argv=None):
             arguments.register_webhook)
         print("Regel angelegt:")
         print(json.dumps(rule, indent=2, ensure_ascii=False))
-        print("\nWichtig: In der TANSS-Oberflaeche pruefen, dass die Regel "
+        print("\nWichtig: In der TANSS-Oberfläche prüfen, dass die Regel "
               "auf die Trigger TICKET_CREATED bzw. TICKET_EMAIL_RECEIVED "
               "reagiert.")
         return 0

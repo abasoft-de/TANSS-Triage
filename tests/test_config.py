@@ -3,11 +3,9 @@ Usage: pytest tests/test_config.py
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: test_config.py
-Beschreibung: Prueft Laden, Defaults und Validierung der Konfiguration.
-Letzte Aenderung: 2026-09-10
+Beschreibung: Prüft Laden, Defaults und Validierung der Konfiguration.
+Letzte Änderung: 2026-09-10
 """
-
-import os
 
 from tanss_triage.config import load_config
 
@@ -18,7 +16,7 @@ def _clean_env(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
-def test_defaults_ohne_dateien(tmp_path, monkeypatch):
+def test_defaults_without_files(tmp_path, monkeypatch):
     _clean_env(monkeypatch)
     cfg = load_config(config_path=str(tmp_path / "gibtsnicht.toml"),
                       env_path=str(tmp_path / "gibtsnicht.env"))
@@ -30,7 +28,7 @@ def test_defaults_ohne_dateien(tmp_path, monkeypatch):
     assert any("TANSS_USERNAME" in problem for problem in cfg.check())
 
 
-def test_toml_und_env_werden_gelesen(tmp_path, monkeypatch):
+def test_reads_toml_and_env(tmp_path, monkeypatch):
     _clean_env(monkeypatch)
     toml = tmp_path / "config.toml"
     toml.write_text("""
@@ -58,7 +56,7 @@ base_url = "http://localhost:11434/v1"
     assert cfg.check() == []
 
 
-def test_anthropic_automatik(tmp_path, monkeypatch):
+def test_anthropic_auto_selection(tmp_path, monkeypatch):
     _clean_env(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.setenv("TANSS_USERNAME", "api")
@@ -69,7 +67,7 @@ def test_anthropic_automatik(tmp_path, monkeypatch):
     assert cfg.check() == []
 
 
-def test_unbekannte_toml_schluessel_stoeren_nicht(tmp_path, monkeypatch):
+def test_unknown_toml_keys_are_ignored(tmp_path, monkeypatch):
     _clean_env(monkeypatch)
     toml = tmp_path / "config.toml"
     toml.write_text("[webhook]\nlisten_port = 8000\nneuer_schalter = true\n",

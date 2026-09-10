@@ -8,7 +8,7 @@ Beschreibung: Konfiguration von TANSS-Triage. Secrets kommen aus der .env
               werden relativ zum Projektstamm gesucht, damit ein systemd-Dienst
               und ein manueller Aufruf dieselben Werte sehen. check() liefert
               Klartextfehler statt Ausnahmen beim Laden.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 import os
@@ -21,7 +21,7 @@ except ModuleNotFoundError:                        # Python < 3.11
 
 from dotenv import load_dotenv
 
-# Projektstamm = zwei Ebenen ueber diesem Modul (src/tanss_triage/config.py).
+# Projektstamm = zwei Ebenen über diesem Modul (src/tanss_triage/config.py).
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
 
@@ -58,7 +58,7 @@ class LlmConfig:
     api_key: str = ""             # kommt aus der Umgebung, nicht aus dem TOML
 
     def resolved_provider(self):
-        """Automatik aufloesen: expliziter Wert gewinnt, sonst nach Key."""
+        """Automatik auflösen: expliziter Wert gewinnt, sonst nach Key."""
         if self.provider:
             return self.provider
         return "anthropic" if self.api_key else "none"
@@ -129,14 +129,14 @@ class Config:
     dry_run: bool = False
 
     def check(self):
-        """Liefert eine Liste der Konfigurationsfehler, leer heisst in Ordnung."""
+        """Liefert eine Liste der Konfigurationsfehler, leer heißt in Ordnung."""
         problems = []
         if not self.tanss.base_url.startswith(("http://", "https://")):
             problems.append("TANSS_BASE_URL sieht nicht wie eine URL aus: %r"
                             % self.tanss.base_url)
         if not self.tanss.username or not self.tanss.password:
             problems.append("TANSS_USERNAME/TANSS_PASSWORD fehlen. Beide "
-                            "gehoeren in die .env (Vorlage: .env.example).")
+                            "gehören in die .env (Vorlage: .env.example).")
         provider = self.llm.resolved_provider()
         if provider not in ("anthropic", "openai_compatible", "none"):
             problems.append("[llm] provider muss anthropic, openai_compatible "
@@ -154,10 +154,10 @@ class Config:
 
 
 def _fill(instance, values):
-    """Uebertraegt bekannte TOML-Schluessel in eine Dataclass-Instanz.
+    """Überträgt bekannte TOML-Schlüssel in eine Dataclass-Instanz.
 
-    Unbekannte Schluessel werden ignoriert statt zu knallen - eine neuere
-    config.toml soll eine aeltere Programmversion nicht am Start hindern.
+    Unbekannte Schlüssel werden ignoriert statt zu knallen - eine neuere
+    config.toml soll eine ältere Programmversion nicht am Start hindern.
     """
     for key, value in (values or {}).items():
         if hasattr(instance, key):
@@ -166,9 +166,9 @@ def _fill(instance, values):
 
 
 def load_config(config_path=None, env_path=None):
-    """Laedt .env und config.toml und liefert die fertige Config.
+    """Lädt .env und config.toml und liefert die fertige Config.
 
-    Suchreihenfolge fuer beide Dateien: expliziter Pfad, dann Projektstamm.
+    Suchreihenfolge für beide Dateien: expliziter Pfad, dann Projektstamm.
     Fehlende Dateien sind erlaubt (alles hat Defaults); ob die Pflichtwerte
     da sind, sagt hinterher Config.check().
     """
@@ -197,7 +197,7 @@ def load_config(config_path=None, env_path=None):
     cfg.tanss.username = os.environ.get("TANSS_USERNAME", "")
     cfg.tanss.password = os.environ.get("TANSS_PASSWORD", "")
 
-    # Der Key haengt am Provider: anthropic nimmt ANTHROPIC_API_KEY,
+    # Der Key hängt am Provider: anthropic nimmt ANTHROPIC_API_KEY,
     # openai_compatible nimmt LLM_API_KEY (viele lokale Endpunkte brauchen
     # gar keinen - dann bleibt er leer).
     if cfg.llm.provider == "openai_compatible":
@@ -206,7 +206,7 @@ def load_config(config_path=None, env_path=None):
         cfg.llm.api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
     # Relative Pfade (state.db, Logdatei) beziehen sich auf den Projektstamm,
-    # nicht auf das zufaellige Arbeitsverzeichnis des Aufrufers.
+    # nicht auf das zufällige Arbeitsverzeichnis des Aufrufers.
     if cfg.state.db_path and not os.path.isabs(cfg.state.db_path):
         cfg.state.db_path = os.path.join(BASE_DIR, cfg.state.db_path)
     if cfg.logging.file and not os.path.isabs(cfg.logging.file):

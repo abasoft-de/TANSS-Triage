@@ -1,15 +1,15 @@
-<#
+﻿<#
     Usage: .\deploy.ps1 -Server tanss-host [-DryRun]
 
     Autor: SO, (c) abasoft GmbH 2026-09-10
     Datei: deploy.ps1
     Beschreibung: Rollt TANSS-Triage nach /home/tanss/listings/TANSS-Triage
                   aus (gleiches Muster wie MCP-Server-TANSS-Remote), legt bei
-                  Bedarf das venv an, installiert die Abhaengigkeiten und
+                  Bedarf das venv an, installiert die Abhängigkeiten und
                   zeigt zum Schluss --version als Selbsttest. .env,
-                  config.toml und state.db auf dem Server bleiben unberuehrt.
-                  Mit -DryRun wird nur gezeigt, was passieren wuerde.
-    Letzte Aenderung: 2026-09-10
+                  config.toml und state.db auf dem Server bleiben unberührt.
+                  Mit -DryRun wird nur gezeigt, was passieren würde.
+    Letzte Änderung: 2026-09-10
 #>
 
 param(
@@ -42,7 +42,7 @@ $SshOptions = @("-p", "$Port")
 $ScpOptions = @("-P", "$Port")
 if ($Key) {
     if (-not (Test-Path $Key)) {
-        Write-Host "FEHLER  Schluessel $Key gibt es nicht." -ForegroundColor Red
+        Write-Host "FEHLER  Schlüssel $Key gibt es nicht." -ForegroundColor Red
         exit 2
     }
     $SshOptions += @("-i", $Key)
@@ -56,7 +56,7 @@ Write-Host ""
 
 if ($DryRun) {
     Write-Host "-DryRun gesetzt: es wird nichts kopiert." -ForegroundColor Cyan
-    Write-Host "Es wuerde laufen:"
+    Write-Host "Es würde laufen:"
     Write-Host "  ssh $Address mkdir -p $TargetDir"
     Write-Host "  scp $($Files -join ', ') ${Address}:$TargetDir/"
     Write-Host "  scp -r $($Directories -join ', ') ${Address}:$TargetDir/"
@@ -81,7 +81,7 @@ foreach ($directory in $Directories) {
     if ($LASTEXITCODE -ne 0) { Write-Host "FEHLER  scp $directory scheiterte." -ForegroundColor Red; exit 1 }
 }
 
-Write-Host "3/4  venv und Abhaengigkeiten"
+Write-Host "3/4  venv und Abhängigkeiten"
 $Setup = "cd $TargetDir; " +
          "if [ ! -x .venv/bin/python ]; then python3 -m venv .venv; fi; " +
          ".venv/bin/pip install --quiet --upgrade pip; " +
@@ -94,7 +94,7 @@ Write-Host "4/4  Selbsttest"
 $Code = $LASTEXITCODE
 Write-Host ""
 if ($Code -eq 0) {
-    Write-Host "Ausgerollt. Naechste Schritte auf dem Server:" -ForegroundColor Green
+    Write-Host "Ausgerollt. Nächste Schritte auf dem Server:" -ForegroundColor Green
     Write-Host "  - .env und config.toml anlegen (Vorlagen liegen daneben)"
     Write-Host "  - systemd-Unit installieren: deploy/tanss-triage.service"
     Write-Host "  - Dienst neu starten: systemctl restart tanss-triage"

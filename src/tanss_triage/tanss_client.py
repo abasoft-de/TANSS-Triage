@@ -3,13 +3,13 @@ Usage: from tanss_triage.tanss_client import TanssClient
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: tanss_client.py
-Beschreibung: Duenner Client fuer die TANSS-REST-API (https://api-doc.tanss.de).
+Beschreibung: Dünner Client für die TANSS-REST-API (https://api-doc.tanss.de).
               Besonderheiten der API: der Login liefert einen JWT, der als
-              woertlicher Header "apiToken: Bearer <jwt>" gesendet wird (nicht
-              Authorization), er lebt 4 Stunden und verfaellt zusaetzlich nach
+              wörtlicher Header "apiToken: Bearer <jwt>" gesendet wird (nicht
+              Authorization), er lebt 4 Stunden und verfällt zusätzlich nach
               ~2 Minuten Leerlauf. Der Client loggt sich darum bei 401/403
               einmal automatisch neu ein und wiederholt den Aufruf.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 import logging
@@ -21,7 +21,7 @@ LOG = logging.getLogger("tanss_triage.tanss")
 
 # Felder, die PUT /tickets/{id} laut API-Beispiel entgegennimmt. Der GET
 # liefert daneben etliche berechnete/readonly-Felder - die werden vor dem
-# Update herausgefiltert, statt sie dem Server zurueckzuwerfen.
+# Update herausgefiltert, statt sie dem Server zurückzuwerfen.
 TICKET_WRITE_FIELDS = (
     "companyId", "remitterId", "title", "content", "extTicketId",
     "assignedToEmployeeId", "assignedToDepartmentId", "statusId", "typeId",
@@ -46,9 +46,9 @@ class TanssApiError(RuntimeError):
 
 
 class TanssClient:
-    """Sitzung gegen eine TANSS-Instanz, thread-sicher genug fuer einen Worker.
+    """Sitzung gegen eine TANSS-Instanz, thread-sicher genug für einen Worker.
 
-    Ein Lock schuetzt den Login, damit Webhook- und Worker-Thread sich nicht
+    Ein Lock schützt den Login, damit Webhook- und Worker-Thread sich nicht
     gegenseitig frische Tokens wegwerfen.
     """
 
@@ -78,7 +78,7 @@ class TanssClient:
         api_key = content.get("apiKey", "")
         if not api_key:
             raise TanssApiError("Login-Antwort ohne apiKey.")
-        self._api_key = api_key            # enthaelt bereits "Bearer "
+        self._api_key = api_key            # enthält bereits "Bearer "
         LOG.info("An TANSS angemeldet (employeeId %s).",
                  content.get("employeeId"))
 
@@ -148,18 +148,18 @@ class TanssClient:
             "GET", "/api/v1/tickets/%d/documents" % ticket_id)) or []
 
     def download_document(self, ticket_id, document_id, target_path):
-        """Laedt ein Ticket-Dokument in eine Datei.
+        """Lädt ein Ticket-Dokument in eine Datei.
 
         Die API liefert erst einen einmaligen Download-Link (15 Minuten
-        gueltig, genau ein Abruf) - darum wird hier sofort heruntergeladen
-        und nie eine URL nach aussen gereicht.
+        gültig, genau ein Abruf) - darum wird hier sofort heruntergeladen
+        und nie eine URL nach außen gereicht.
         """
         pass_response = self._content(self._request(
             "GET", "/api/v1/tickets/%d/documents/%d"
             % (ticket_id, document_id))) or {}
         url = pass_response.get("url", "")
         if not url:
-            raise TanssApiError("Kein Download-Link fuer Dokument %d."
+            raise TanssApiError("Kein Download-Link für Dokument %d."
                                 % document_id)
         if url.startswith("/"):
             url = self.base_url + url
@@ -180,7 +180,7 @@ class TanssClient:
     # -- Identifikation und Stammdaten
 
     def identify_phone_number(self, number):
-        """Laesst TANSS eine Rufnummer aufloesen (Firmen- und Mitarbeiternummern)."""
+        """Lässt TANSS eine Rufnummer auflösen (Firmen- und Mitarbeiternummern)."""
         return self._content(self._request(
             "POST", "/api/v1/phoneCalls/identify",
             json_body={"fromPhoneNumber": number})) or {}

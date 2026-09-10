@@ -5,8 +5,8 @@ Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: logging_setup.py
 Beschreibung: Logging auf die Konsole (unter systemd landet das im Journal)
               und optional in eine rotierende Datei. Bewusst schlicht - wer
-              mehr braucht, haengt sich an das Standard-Logging.
-Letzte Aenderung: 2026-09-10
+              mehr braucht, hängt sich an das Standard-Logging.
+Letzte Änderung: 2026-09-10
 """
 
 import logging

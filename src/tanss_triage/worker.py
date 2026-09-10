@@ -3,13 +3,13 @@ Usage: from tanss_triage.worker import Worker
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: worker.py
-Beschreibung: Arbeitet die vom Webhook-Server gefuellte Queue sequenziell ab.
+Beschreibung: Arbeitet die vom Webhook-Server gefüllte Queue sequenziell ab.
               Sequenziell mit Absicht: Whisper large-v3 lastet die CPU allein
-              aus, und zwei parallele Transkriptionen waeren zusammen
+              aus, und zwei parallele Transkriptionen wären zusammen
               langsamer als nacheinander. Ein Fehler bei einem Ticket beendet
-              den Worker nicht - der naechste Webhook soll weiter verarbeitet
+              den Worker nicht - der nächste Webhook soll weiter verarbeitet
               werden.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 import logging
@@ -45,8 +45,8 @@ class Worker:
             try:
                 self._processor.process_ticket(item)
             except Exception:
-                # process_ticket faengt Dokumentfehler selbst; hier landen
-                # nur noch Ausfaelle davor (Ticket nicht lesbar, API weg).
+                # process_ticket fängt Dokumentfehler selbst; hier landen
+                # nur noch Ausfälle davor (Ticket nicht lesbar, API weg).
                 LOG.exception("Ticket %s konnte nicht verarbeitet werden.",
                               item)
             finally:

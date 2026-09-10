@@ -5,12 +5,12 @@ Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: webhook_server.py
 Beschreibung: Nimmt die Webhooks der TANSS-Event-Regeln entgegen. Bewusst nur
               Standardbibliothek (ThreadingHTTPServer): ein Endpunkt, localhost,
-              keine weitere Abhaengigkeit. Der Handler antwortet sofort und
+              keine weitere Abhängigkeit. Der Handler antwortet sofort und
               legt nur die Ticket-ID in die Queue - transkribiert wird im
               Worker, denn Whisper braucht Minuten und TANSS soll auf seinen
               Webhook nicht warten. TANSS signiert Webhooks nicht, darum
               steckt ein optionales Shared Secret im Pfad.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 import json
@@ -22,13 +22,13 @@ from . import __version__
 
 LOG = logging.getLogger("tanss_triage.webhook")
 
-MAX_BODY = 1024 * 1024        # TnsTanssEvent ist klein; alles darueber ist Unfug
+MAX_BODY = 1024 * 1024        # TnsTanssEvent ist klein; alles darüber ist Unfug
 
 
 def extract_ticket_id(payload):
     """Zieht die Ticket-ID aus einem TnsTanssEvent.
 
-    linkId traegt sie bei linkType TICKET; zur Sicherheit zaehlt auch
+    linkId trägt sie bei linkType TICKET; zur Sicherheit zählt auch
     content.ticket.id. Alles andere (etwa Events anderer Objektarten,
     falls die Regel breiter feuert) wird ignoriert.
     """
@@ -66,7 +66,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         ticket_id = extract_ticket_id(payload)
         if ticket_id is None:
-            # Kein Ticket-Event - ok melden, sonst deaktiviert womoeglich
+            # Kein Ticket-Event - ok melden, sonst deaktiviert womöglich
             # jemand die Regel wegen Fehlerquoten.
             LOG.debug("Webhook ohne Ticket-ID ignoriert: %.200s", payload)
             self._answer(200, "ignored")
@@ -91,12 +91,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, fmt, *args):
-        """Zugriffs-Logging laeuft ueber unser Logging, nicht ueber stderr."""
+        """Zugriffs-Logging läuft über unser Logging, nicht über stderr."""
         LOG.debug("%s - %s", self.address_string(), fmt % args)
 
 
 def start_webhook_server(cfg, queue):
-    """Startet den HTTP-Server im Hintergrund-Thread und liefert ihn zurueck.
+    """Startet den HTTP-Server im Hintergrund-Thread und liefert ihn zurück.
 
     cfg ist eine WebhookConfig; der Pfad ist /webhook oder - mit Secret -
     /webhook/<secret>.

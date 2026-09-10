@@ -3,14 +3,14 @@ Usage: from tanss_triage.llm import build_llm
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: llm.py
-Beschreibung: Abstraktion ueber das Sprachmodell. Zwei Provider: die
+Beschreibung: Abstraktion über das Sprachmodell. Zwei Provider: die
               Claude-API (anthropic-SDK, braucht ANTHROPIC_API_KEY) und ein
-              OpenAI-kompatibler Endpunkt fuer lokal gehostete Modelle
-              (Ollama, vLLM, LM Studio - ueber schlichtes requests, damit
-              keine weitere Abhaengigkeit noetig ist). build_llm() liefert
-              None, wenn kein Provider konfiguriert ist - der Aufrufer laesst
+              OpenAI-kompatibler Endpunkt für lokal gehostete Modelle
+              (Ollama, vLLM, LM Studio - über schlichtes requests, damit
+              keine weitere Abhängigkeit nötig ist). build_llm() liefert
+              None, wenn kein Provider konfiguriert ist - der Aufrufer lässt
               den LLM-Schritt dann einfach aus.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 import logging
@@ -25,7 +25,7 @@ class LlmError(RuntimeError):
 
 
 class AnthropicLlm:
-    """Claude ueber die offizielle API."""
+    """Claude über die offizielle API."""
 
     def __init__(self, cfg):
         import anthropic                      # erst hier, damit "none" und
@@ -82,7 +82,7 @@ class OpenAiCompatibleLlm:
 
 
 def build_llm(cfg):
-    """Liefert den passenden Client oder None (= LLM-Schritt entfaellt)."""
+    """Liefert den passenden Client oder None (= LLM-Schritt entfällt)."""
     provider = cfg.resolved_provider()
     if provider == "anthropic":
         return AnthropicLlm(cfg)

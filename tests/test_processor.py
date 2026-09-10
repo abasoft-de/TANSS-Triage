@@ -3,11 +3,11 @@ Usage: pytest tests/test_processor.py
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: test_processor.py
-Beschreibung: Prueft die Hilfsfunktionen des Prozessors (Audio-Filter,
-              Starface-Erkennung, Anrufer-Extraktion, Ueberschreib-Schutz)
+Beschreibung: Prüft die Hilfsfunktionen des Prozessors (Audio-Filter,
+              Starface-Erkennung, Anrufer-Extraktion, Überschreib-Schutz)
               und den Gesamtablauf mit gemocktem TANSS-Client, Whisper
               und LLM.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 from tanss_triage.config import Config
@@ -20,7 +20,7 @@ from tanss_triage.transcriber import Transcript
 
 STARFACE_SUBJECT = ("Sie haben eine Sprachnachricht von  00497432994360 "
                     "in Zentrale Überlauf erhalten")
-STARFACE_SUBJECT_MIT_NAME = (
+STARFACE_SUBJECT_WITH_NAME = (
     "Sie haben eine Sprachnachricht von STABRA (Praxis Stark) "
     "004971359390790 in Zentrale Überlauf erhalten")
 STARFACE_BODY = ("WARNUNG: EXTERNE NACHRICHT ...\nSie haben am 10.09.26 um "
@@ -31,7 +31,7 @@ STARFACE_BODY = ("WARNUNG: EXTERNE NACHRICHT ...\nSie haben am 10.09.26 um "
 
 # -- Hilfsfunktionen ---------------------------------------------------------
 
-def test_audio_filter_nimmt_endung_und_mime():
+def test_audio_filter_accepts_extension_and_mime():
     documents = [
         {"id": 1, "fileName": "voicemail-2026-07-22_15-32.wav"},
         {"id": 2, "fileName": "SF_M_IMG_0", "mimeType": "image/png"},
@@ -43,7 +43,7 @@ def test_audio_filter_nimmt_endung_und_mime():
     assert [document["id"] for document in hits] == [1, 3, 4]
 
 
-def test_starface_mail_erkennung():
+def test_starface_mail_detection():
     history = {"mails": [
         {"inbound": False, "senderEMail": "starface@tele-x.abasoft-gmbh.de"},
         {"inbound": True, "senderEMail": "kunde@praxis.de"},
@@ -59,26 +59,26 @@ def test_starface_mail_erkennung():
     assert find_starface_mail({}, ["x"]) is None
 
 
-def test_anrufer_aus_betreff():
+def test_caller_from_subject():
     number, box = extract_caller_info({"subject": STARFACE_SUBJECT})
     assert number == "00497432994360"
     assert box == "Zentrale Überlauf"
 
 
-def test_anrufer_aus_betreff_mit_namen():
+def test_caller_from_subject_with_name():
     number, box = extract_caller_info(
-        {"subject": STARFACE_SUBJECT_MIT_NAME})
+        {"subject": STARFACE_SUBJECT_WITH_NAME})
     assert number == "004971359390790"
 
 
-def test_anrufer_aus_body_wenn_betreff_leer():
+def test_caller_from_body_when_subject_empty():
     number, box = extract_caller_info({"subject": "",
                                        "bodyPlain": STARFACE_BODY})
     assert number == "00497432994360"
     assert box == "Zentrale Überlauf"
 
 
-def test_ueberschreib_schutz():
+def test_overwrite_protection():
     pattern = "^Sie haben eine Sprachnachricht"
     assert should_replace_title(STARFACE_SUBJECT, pattern)
     assert not should_replace_title("Fax defekt bei Dr. Klein", pattern)
@@ -88,7 +88,7 @@ def test_ueberschreib_schutz():
     assert not should_replace_content("Kunde meldet Druckerproblem.", boiler)
 
 
-def test_marker_erkennung():
+def test_marker_detection():
     history = {"comments": [
         {"title": "x", "content": comment_marker(77) + "\nTranskript ..."}]}
     assert history_has_marker(history, 77)
@@ -142,7 +142,7 @@ class FakeTranscriber:
 
 class FakeLlm:
     def complete(self, system, user):
-        return ('{"betreff": "Fax defekt - Praxis Duft", '
+        return ('{"betreff": "Faxversand gestört", '
                 '"beschreibung": "Fax geht nicht.\\nAnrufer: Frau Duft", '
                 '"melder_id": 7}')
 
@@ -180,7 +180,7 @@ IDENTIFY_EMPLOYEE = {"fromPhoneNrInfos": {
                "companyId": 94, "charsLeftOut": 0}]}}
 
 
-def test_starface_ticket_komplett(tmp_path):
+def test_starface_ticket_full_flow(tmp_path):
     client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET,
                         identify=IDENTIFY_EMPLOYEE)
     cfg = _config(tmp_path)
@@ -196,17 +196,17 @@ def test_starface_ticket_komplett(tmp_path):
 
     assert len(client.updates) == 1
     _, update = client.updates[0]
-    assert update["title"] == "Fax defekt - Praxis Duft"
+    assert update["title"] == "Faxversand gestört"
     assert update["content"].startswith("Fax geht nicht.")
     assert update["companyId"] == 94
     assert update["remitterId"] == 7
 
-    # zweiter Lauf: Idempotenz ueber den State
+    # zweiter Lauf: Idempotenz über den State
     processor.process_ticket(4711)
     assert len(client.comments) == 1
 
 
-def test_manuell_angepasster_betreff_bleibt(tmp_path):
+def test_manually_edited_title_is_kept(tmp_path):
     ticket = dict(STARFACE_TICKET, title="Fax defekt (manuell angepasst)")
     client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, ticket,
                         identify=IDENTIFY_EMPLOYEE)
@@ -218,7 +218,7 @@ def test_manuell_angepasster_betreff_bleibt(tmp_path):
     assert update["content"].startswith("Fax geht nicht.")   # Boilerplate weg
 
 
-def test_nicht_starface_nur_kommentar(tmp_path):
+def test_non_starface_only_gets_comment(tmp_path):
     history = {"mails": [{"inbound": True, "senderEMail": "kunde@praxis.de",
                           "subject": "Mail mit Diktat"}], "comments": []}
     ticket = {"id": 4712, "title": "Diktat", "content": "siehe Anhang",
@@ -231,7 +231,7 @@ def test_nicht_starface_nur_kommentar(tmp_path):
     assert client.updates == []            # ... Ticket bleibt unangetastet
 
 
-def test_ohne_llm_nur_zuordnung(tmp_path):
+def test_without_llm_assignment_still_happens(tmp_path):
     client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET,
                         identify=IDENTIFY_EMPLOYEE)
     processor = _processor(_config(tmp_path), client, llm=None)
@@ -244,7 +244,7 @@ def test_ohne_llm_nur_zuordnung(tmp_path):
     assert update["remitterId"] == 7
 
 
-def test_dry_run_schreibt_nichts(tmp_path):
+def test_dry_run_writes_nothing(tmp_path):
     client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET,
                         identify=IDENTIFY_EMPLOYEE)
     cfg = _config(tmp_path)
@@ -254,11 +254,11 @@ def test_dry_run_schreibt_nichts(tmp_path):
 
     assert client.comments == []
     assert client.updates == []
-    # dry-run merkt sich nichts - der scharfe Lauf soll spaeter verarbeiten
+    # dry-run merkt sich nichts - der scharfe Lauf soll später verarbeiten
     assert not processor.state.is_done(55)
 
 
-def test_marker_im_ticket_verhindert_doppelung(tmp_path):
+def test_marker_in_ticket_prevents_duplicates(tmp_path):
     history = {"mails": STARFACE_HISTORY["mails"],
                "comments": [{"title": "Transkript",
                              "content": comment_marker(55)}]}
@@ -270,7 +270,7 @@ def test_marker_im_ticket_verhindert_doppelung(tmp_path):
     assert processor.state.is_done(55)     # State nachgetragen
 
 
-def test_ohne_audio_passiert_nichts(tmp_path):
+def test_without_audio_nothing_happens(tmp_path):
     client = FakeClient([{"id": 9, "fileName": "brief.pdf"}],
                         STARFACE_HISTORY, STARFACE_TICKET)
     processor = _processor(_config(tmp_path), client, llm=FakeLlm())

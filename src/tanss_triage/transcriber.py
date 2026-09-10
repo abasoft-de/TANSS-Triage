@@ -7,9 +7,9 @@ Beschreibung: Wrapper um faster-whisper. Das Modell wird erst beim ersten
               Transkript geladen (large-v3 sind ~3 GB Download plus etliche
               Sekunden Ladezeit) und dann behalten - der Worker arbeitet
               sequenziell, mehr als eine Instanz braucht niemand.
-              faster-whisper dekodiert ueber PyAV, ein systemweites ffmpeg
-              ist nicht noetig; damit sind wav, mp3, m4a, ogg usw. abgedeckt.
-Letzte Aenderung: 2026-09-10
+              faster-whisper dekodiert über PyAV, ein systemweites ffmpeg
+              ist nicht nötig; damit sind wav, mp3, m4a, ogg usw. abgedeckt.
+Letzte Änderung: 2026-09-10
 """
 
 import logging
@@ -45,11 +45,11 @@ class Transcriber:
         return self._model
 
     def transcribe(self, path):
-        """Transkribiert eine Audiodatei vollstaendig.
+        """Transkribiert eine Audiodatei vollständig.
 
         Die Segmente kommen als Generator - erst das Ausiterieren
         transkribiert wirklich. VAD filtert Stille am Anfang/Ende der
-        Voicemail (Ansageton, Aufleger), verkuerzt also nur, was ohnehin
+        Voicemail (Ansageton, Aufleger), verkürzt also nur, was ohnehin
         keine Sprache ist.
         """
         model = self._ensure_model()

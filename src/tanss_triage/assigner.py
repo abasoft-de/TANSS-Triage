@@ -3,7 +3,7 @@ Usage: from tanss_triage.assigner import decide_assignment
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: assigner.py
-Beschreibung: Entscheidet anhand der TANSS-Rufnummernaufloesung
+Beschreibung: Entscheidet anhand der TANSS-Rufnummernauflösung
               (POST /api/v1/phoneCalls/identify), welcher Firma ein
               Starface-Ticket zugewiesen wird und ob ein Ansprechpartner als
               Melder gesetzt werden darf. Die Regeln stammen aus der Vorgabe:
@@ -12,7 +12,7 @@ Beschreibung: Entscheidet anhand der TANSS-Rufnummernaufloesung
               Firmenzentrale ist; Mitarbeiter, die in mehreren Firmen
               arbeiten, werden gar nicht zugeordnet. Im Zweifel passiert
               nichts - eine falsche Zuordnung ist schlimmer als keine.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 import logging
@@ -33,13 +33,13 @@ class Assignment:
 
 
 def multi_company_checker(db_cfg):
-    """Baut die Pruefung 'arbeitet Mitarbeiter X in mehreren Firmen?'.
+    """Baut die Prüfung 'arbeitet Mitarbeiter X in mehreren Firmen?'.
 
     Die REST-API stellt die Mehrfach-Anstellung nicht bereit, darum ein
     Read-only-Blick in die TANSS-Datenbank (mitarbeiter_firmen), mit den
     Zugangsdaten aus ~/.my.cnf - derselben Datei, die schon der MCP-Server
     benutzt. Liefert eine Funktion employee_id -> True/False/None
-    (None = Pruefung nicht moeglich, der Aufrufer entscheidet fail-safe).
+    (None = Prüfung nicht möglich, der Aufrufer entscheidet fail-safe).
     """
     defaults_file = db_cfg.resolved_defaults_file()
 
@@ -63,8 +63,8 @@ def multi_company_checker(db_cfg):
                 connection.close()
             return count > 1
         except Exception as error:
-            LOG.warning("Mehrfach-Firmen-Check fuer Mitarbeiter %s nicht "
-                        "moeglich: %s", employee_id, error)
+            LOG.warning("Mehrfach-Firmen-Check für Mitarbeiter %s nicht "
+                        "möglich: %s", employee_id, error)
             return None
 
     return check
@@ -100,7 +100,7 @@ def decide_assignment(identify_content, is_multi_company,
         exact = (employee.get("charsLeftOut") or 0) == 0
         # Firmennummer beim Mitarbeiter hinterlegt? Dann matcht dieselbe
         # Nummer auch eine Firma exakt - das ist die Zentrale, kein
-        # persoenlicher Anschluss.
+        # persönlicher Anschluss.
         company_exact = any((item.get("charsLeftOut") or 0) == 0
                             for item in companies)
 
@@ -111,7 +111,7 @@ def decide_assignment(identify_content, is_multi_company,
                                    % (employee.get("name") or
                                       "Mitarbeiter %s" % employee_id))
         if multi is None:
-            return Assignment(note="Mehrfach-Firmen-Pruefung nicht moeglich "
+            return Assignment(note="Mehrfach-Firmen-Prüfung nicht möglich "
                                    "(DB nicht erreichbar) - sicherheitshalber "
                                    "keine automatische Zuordnung.")
 
@@ -123,8 +123,8 @@ def decide_assignment(identify_content, is_multi_company,
         if company_id:
             return Assignment(
                 company_id=company_id,
-                note="Rufnummer gehoert zur Firma von %s - Firma zugewiesen, "
-                     "Melder offen (Nummer nicht eindeutig persoenlich)."
+                note="Rufnummer gehört zur Firma von %s - Firma zugewiesen, "
+                     "Melder offen (Nummer nicht eindeutig persönlich)."
                      % (employee.get("name") or employee_id))
 
     if len(employees) > 1:

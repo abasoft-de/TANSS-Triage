@@ -1,13 +1,13 @@
-# Vorlage fuer config.toml - Verhalten von TANSS-Triage.
+# Vorlage für config.toml - Verhalten von TANSS-Triage.
 #
 # Einrichten:  cp config.example.toml config.toml
-# Secrets (Zugangsdaten, API-Keys) gehoeren NICHT hierher, sondern in .env.
-# Jeder Wert hier zeigt den eingebauten Default - wer nichts aendern will,
+# Secrets (Zugangsdaten, API-Keys) gehören NICHT hierher, sondern in .env.
+# Jeder Wert hier zeigt den eingebauten Default - wer nichts ändern will,
 # kann den Eintrag auch weglassen.
 
 [webhook]
-# Wohin TANSS die Event-Webhooks schickt. Das Programm laeuft auf dem
-# TANSS-Server selbst, darum genuegt localhost.
+# Wohin TANSS die Event-Webhooks schickt. Das Programm läuft auf dem
+# TANSS-Server selbst, darum genügt localhost.
 listen_host = "127.0.0.1"
 listen_port = 8763
 # Shared Secret als Pfadbestandteil der Webhook-URL, weil TANSS-Webhooks
@@ -16,16 +16,16 @@ listen_port = 8763
 secret = ""
 
 [audio]
-# Dateiendungen, die als Sprachaufnahme gelten (zusaetzlich zaehlt jeder
+# Dateiendungen, die als Sprachaufnahme gelten (zusätzlich zählt jeder
 # Anhang mit MIME-Typ audio/*).
 extensions = ["wav", "mp3", "m4a", "ogg", "opus", "flac", "aac", "wma"]
 
 [whisper]
 # Modellname von faster-whisper (tiny, base, small, medium, large-v3, ...).
-# large-v3 laedt beim ersten Start ca. 3 GB in den Modellcache.
+# large-v3 lädt beim ersten Start ca. 3 GB in den Modellcache.
 model = "large-v3"
 device = "auto"          # auto | cpu | cuda
-compute_type = "int8"    # int8 ist der CPU-Kompromiss aus Tempo und Qualitaet
+compute_type = "int8"    # int8 ist der CPU-Kompromiss aus Tempo und Qualität
 language = "de"
 # Modellcache; leer = Hugging-Face-Default (~/.cache/huggingface).
 download_root = ""
@@ -37,17 +37,17 @@ download_root = ""
 # Zuordnung, kein Betreff/Beschreibung-Rewrite).
 provider = ""
 model = "claude-sonnet-5"
-# Nur fuer openai_compatible: Basis-URL des Endpunkts,
-# z. B. "http://localhost:11434/v1" fuer Ollama.
+# Nur für openai_compatible: Basis-URL des Endpunkts,
+# z. B. "http://localhost:11434/v1" für Ollama.
 base_url = ""
 max_tokens = 1500
 timeout = 120
 
 [starface]
 # Eingehende Mails dieser Absender machen ein Ticket zum Starface-Ticket
-# (Teilstring-Vergleich, Gross-/Kleinschreibung egal).
+# (Teilstring-Vergleich, Groß-/Kleinschreibung egal).
 sender_patterns = ["starface@tele-x.abasoft-gmbh.de"]
-# Betreff wird nur ueberschrieben, solange er noch auf dieses Muster passt -
+# Betreff wird nur überschrieben, solange er noch auf dieses Muster passt -
 # von Kolleg*innen angepasste Betreffe bleiben unangetastet.
 generic_title_pattern = "^Sie haben eine Sprachnachricht"
 # Beschreibung wird nur ersetzt, solange noch einer dieser Teilstrings
@@ -60,7 +60,7 @@ enabled = true
 assign_remitter = true
 
 [db]
-# Read-only-Zugriff auf die TANSS-MariaDB fuer den Mehrfach-Firmen-Check
+# Read-only-Zugriff auf die TANSS-MariaDB für den Mehrfach-Firmen-Check
 # (mitarbeiter_firmen) - dieselbe Zugangsdatei wie der MCP-Server.
 # Leer lassen, um den Check abzuschalten (dann werden Mitarbeiter-Treffer
 # sicherheitshalber NICHT zugeordnet).

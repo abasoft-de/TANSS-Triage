@@ -7,8 +7,8 @@ Beschreibung: TANSS-Triage - transkribiert Sprachnachrichten aus TANSS-Tickets
               (lokales Whisper) und bereitet Starface-Tickets per LLM auf.
               Die Versionsnummer kommt aus der VERSION-Datei im Projektstamm,
               damit sie auch ohne Python lesbar ist (cat VERSION) und ein
-              Deploy sie als gewoehnliche Datei mitnimmt.
-Letzte Aenderung: 2026-09-10
+              Deploy sie als gewöhnliche Datei mitnimmt.
+Letzte Änderung: 2026-09-10
 """
 
 import os
@@ -20,7 +20,7 @@ _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(
 def _read_version():
     """Programmversion aus der VERSION-Datei im Projektstamm.
 
-    Fehlt sie, ist das ein unvollstaendiges Deploy - 0.0.0 macht das
+    Fehlt sie, ist das ein unvollständiges Deploy - 0.0.0 macht das
     sichtbar, ohne den Start zu verhindern.
     """
     try:

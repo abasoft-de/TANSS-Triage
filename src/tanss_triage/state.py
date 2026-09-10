@@ -5,10 +5,10 @@ Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: state.py
 Beschreibung: Merkt sich in einer SQLite-Datei, welche Ticket-Dokumente schon
               verarbeitet wurden, damit doppelte Webhooks (TICKET_CREATED und
-              EMAIL_RECEIVED feuern fuer dasselbe Ticket) und Neustarts keine
-              doppelten Kommentare erzeugen. Fehlversuche werden gezaehlt,
+              EMAIL_RECEIVED feuern für dasselbe Ticket) und Neustarts keine
+              doppelten Kommentare erzeugen. Fehlversuche werden gezählt,
               damit eine kaputte Datei nicht endlos wiederholt wird.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 import sqlite3
@@ -19,7 +19,7 @@ MAX_ATTEMPTS = 3
 
 
 class State:
-    """SQLite-Zustand; ein Lock genuegt, es schreibt nur der Worker."""
+    """SQLite-Zustand; ein Lock genügt, es schreibt nur der Worker."""
 
     def __init__(self, db_path):
         self._lock = threading.Lock()
@@ -53,7 +53,7 @@ class State:
         self._write(document_id, ticket_id, "done", detail)
 
     def mark_failed(self, document_id, ticket_id, detail=""):
-        """Zaehlt einen Fehlversuch; liefert True, solange Wiederholen erlaubt ist."""
+        """Zählt einen Fehlversuch; liefert True, solange Wiederholen erlaubt ist."""
         with self._lock:
             self._connection.execute("""
                 INSERT INTO documents (document_id, ticket_id, processed_at,

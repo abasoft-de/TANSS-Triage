@@ -3,10 +3,10 @@ Usage: pytest tests/test_webhook.py
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: test_webhook.py
-Beschreibung: Prueft den Webhook-Server gegen echte HTTP-Requests auf einem
+Beschreibung: Prüft den Webhook-Server gegen echte HTTP-Requests auf einem
               Ephemeral-Port sowie das Herausziehen der Ticket-ID aus dem
               TnsTanssEvent.
-Letzte Aenderung: 2026-09-10
+Letzte Änderung: 2026-09-10
 """
 
 import json
@@ -24,23 +24,23 @@ EVENT = {"linkType": "TICKET", "linkId": 253724,
          "content": {"ticket": {"id": 253724, "title": "Sprachnachricht"}}}
 
 
-def test_ticket_id_aus_linkid():
+def test_ticket_id_from_link_id():
     assert extract_ticket_id(EVENT) == 253724
 
 
-def test_ticket_id_aus_content_wenn_linkid_fehlt():
+def test_ticket_id_from_content_when_link_id_missing():
     assert extract_ticket_id(
         {"content": {"ticket": {"id": 99}}}) == 99
 
 
-def test_kein_ticket_event():
+def test_non_ticket_event_returns_none():
     assert extract_ticket_id({"linkType": "PC", "linkId": 5}) is None
     assert extract_ticket_id({}) is None
     assert extract_ticket_id("unsinn") is None
 
 
 @pytest.fixture()
-def server_und_queue():
+def server_and_queue():
     work_queue = queue.Queue()
     cfg = WebhookConfig(listen_host="127.0.0.1", listen_port=0,
                         secret="s3cret")
@@ -61,24 +61,24 @@ def _post(url, payload):
         return error.code
 
 
-def test_webhook_landet_in_queue(server_und_queue):
-    server, work_queue = server_und_queue
+def test_webhook_lands_in_queue(server_and_queue):
+    server, work_queue = server_and_queue
     port = server.server_address[1]
     status = _post("http://127.0.0.1:%d/webhook/s3cret" % port, EVENT)
     assert status == 200
     assert work_queue.get(timeout=5) == 253724
 
 
-def test_falsches_secret_wird_abgewiesen(server_und_queue):
-    server, work_queue = server_und_queue
+def test_wrong_secret_is_rejected(server_and_queue):
+    server, work_queue = server_and_queue
     port = server.server_address[1]
     status = _post("http://127.0.0.1:%d/webhook/falsch" % port, EVENT)
     assert status == 404
     assert work_queue.empty()
 
 
-def test_health_endpunkt(server_und_queue):
-    server, _ = server_und_queue
+def test_health_endpoint(server_and_queue):
+    server, _ = server_and_queue
     port = server.server_address[1]
     with urllib.request.urlopen(
             "http://127.0.0.1:%d/health" % port, timeout=5) as response:
