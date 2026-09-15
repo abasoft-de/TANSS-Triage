@@ -5,6 +5,27 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.3.0] - 2026-09-15
+
+### Geändert
+
+- **Neues Kommentarformat** (Vorgabe): Titel "Automatisch erzeugtes
+  Transkript"; erste Zeile `Zuordnung: <KUBEZ> | <Anrede> <Titel> <Vorname>
+  <Nachname> (<Rolle>)` (Bestandteile entfallen, wenn in TANSS nicht
+  gepflegt; ohne Personenzuordnung nur die KUBEZ, ohne Firmenzuordnung der
+  Klartext-Grund), dann das Transkript, dann die Zeile
+  `Datei: ... | Audio: ... | Anrufer: ...`, zuletzt der Idempotenz-Marker.
+  KUBEZ und Personenbeschriftung kommen aus der Datenbank
+  (firmen.displayID, mitarbeiter + anrede + mitarbeiter_titel + funktion);
+  ohne DB greifen die Namen aus der identify-Antwort.
+  Der Block "Automatische Triage" mit Ticket-Änderungen entfällt.
+
+### Behoben
+
+- Mehrfach-Firmen-Check fragte die falsche Spalte ab (`maID` statt
+  `mitarbeiterID` in `mitarbeiter_firmen`) und lief dadurch immer in den
+  Fail-safe - Ansprechpartner wurden nie als Melder gesetzt.
+
 ## [0.2.2] - 2026-09-15
 
 ### Geändert

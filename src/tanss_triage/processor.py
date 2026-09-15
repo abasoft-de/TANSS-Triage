@@ -167,7 +167,8 @@ class Processor:
     """Verdrahtet Client, Whisper, LLM und State für je ein Ticket."""
 
     def __init__(self, cfg, client, transcriber, llm, state,
-                 is_multi_company, mail_attachments_lookup=None):
+                 is_multi_company, mail_attachments_lookup=None,
+                 labels_lookup=None):
         self.cfg = cfg
         self.client = client
         self.transcriber = transcriber
@@ -177,6 +178,10 @@ class Processor:
         # mail_id -> Liste aus mails_attachments oder None (DB nicht da)
         self.mail_attachments_lookup = (mail_attachments_lookup
                                         or (lambda mail_id: None))
+        # (company_id, employee_id) -> (kubez, person) für die
+        # Zuordnungszeile; None-Werte lösen die Fallbacks aus.
+        self.labels_lookup = (labels_lookup
+                              or (lambda company_id, employee_id: (None, None)))
 
     # -- Hauptablauf
 
@@ -252,7 +257,7 @@ class Processor:
         for source, transcript in transcripts:
             comment_title, comment_body = self._build_comment(
                 source, transcript, starface_mail, caller_number,
-                assignment, update_notes, ticket)
+                assignment)
             if self.cfg.dry_run:
                 LOG.info("[dry-run] Kommentar an Ticket %d:\n%s\n%s",
                          ticket_id, comment_title, comment_body)
@@ -425,26 +430,40 @@ class Processor:
 
         return (update, notes) if notes else (None, [])
 
+    def _assignment_line(self, assignment):
+        """Die Zuordnungszeile des Kommentars.
+
+        Firma gefunden: "Zuordnung: <KUBEZ>", mit Melder zusätzlich
+        " | Anrede Titel Vorname Nachname (Rolle)". Keine Firma: der
+        Klartext-Grund aus der Zuordnungsentscheidung.
+        """
+        if assignment.company_id is None:
+            return "Zuordnung: %s" % (assignment.note
+                                      or "keine automatische Zuordnung.")
+        kubez, person = self.labels_lookup(assignment.company_id,
+                                           assignment.remitter_id)
+        kubez = (kubez or assignment.company_label
+                 or "Firma %d" % assignment.company_id)
+        if assignment.remitter_id:
+            person = person or assignment.remitter_label
+            if person:
+                return "Zuordnung: %s | %s" % (kubez, person)
+        return "Zuordnung: %s" % kubez
+
     def _build_comment(self, source, transcript, starface_mail,
-                       caller_number, assignment, update_notes, ticket):
+                       caller_number, assignment):
         """Formuliert den Ticket-Kommentar zu einer transkribierten Datei."""
-        title = "Transkript: %s" % (source.file_name or "Sprachaufnahme")
-        lines = [comment_marker(source.key)]
+        title = "Automatisch erzeugtes Transkript"
+        lines = []
+        if starface_mail:
+            lines.append(self._assignment_line(assignment))
+            lines.append("")
+        lines.append(transcript.text or "(keine Sprache erkannt)")
+        lines.append("")
         meta = ["Datei: %s" % (source.file_name or "?"),
                 "Audio: %s min" % format_duration(transcript.duration)]
         if caller_number:
             meta.append("Anrufer: %s" % caller_number)
         lines.append(" | ".join(meta))
-        lines.append("")
-        lines.append(transcript.text or "(keine Sprache erkannt)")
-        if starface_mail:
-            lines.append("")
-            lines.append("--- Automatische Triage ---")
-            if assignment.note:
-                lines.append("Zuordnung: %s" % assignment.note)
-            if update_notes:
-                lines.append("Ticket-Änderungen: %s" % ", ".join(update_notes))
-                if any(note == "Betreff gesetzt" for note in update_notes):
-                    lines.append("Ursprünglicher Betreff: %s"
-                                 % (ticket.get("title") or ""))
+        lines.append(comment_marker(source.key))
         return title, "\n".join(lines)

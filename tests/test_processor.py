@@ -182,12 +182,13 @@ def _config(tmp_path):
     return cfg
 
 
-def _processor(cfg, client, llm=None, mail_lookup=None):
+def _processor(cfg, client, llm=None, mail_lookup=None, labels=None):
     return Processor(cfg=cfg, client=client,
                      transcriber=FakeTranscriber(), llm=llm,
                      state=State(cfg.state.db_path),
                      is_multi_company=lambda _id: False,
-                     mail_attachments_lookup=mail_lookup)
+                     mail_attachments_lookup=mail_lookup,
+                     labels_lookup=(lambda c, e: labels) if labels else None)
 
 
 STARFACE_HISTORY = {"mails": [{
@@ -219,9 +220,12 @@ def test_starface_ticket_full_flow(tmp_path):
 
     assert len(client.comments) == 1
     _, title, body, internal = client.comments[0]
-    assert "voicemail-2026-09-10_10-15.wav" in title
+    assert title == "Automatisch erzeugtes Transkript"
     assert "Frau Duft, das Fax geht nicht" in body
     assert comment_marker("doc:55") in body
+    assert "Datei: voicemail-2026-09-10_10-15.wav" in body
+    # Ohne DB-Labels greifen die Fallbacks aus der identify-Antwort
+    assert "Zuordnung: Firma 94 | Duft, Petra" in body
     assert internal is True
 
     assert len(client.updates) == 1
@@ -259,6 +263,53 @@ def test_non_starface_only_gets_comment(tmp_path):
 
     assert len(client.comments) == 1       # Transkript ja ...
     assert client.updates == []            # ... Ticket bleibt unangetastet
+    assert "Zuordnung:" not in client.comments[0][2]
+
+
+def test_comment_format_with_db_labels(tmp_path):
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET,
+                        identify=IDENTIFY_EMPLOYEE)
+    processor = _processor(_config(tmp_path), client, llm=None,
+                           labels=("ABASTU",
+                                   "Herr Dr. med. Sascha Orlik (Arzt)"))
+    processor.process_ticket(4711)
+
+    _, title, body, _ = client.comments[0]
+    assert title == "Automatisch erzeugtes Transkript"
+    lines = body.split("\n")
+    assert lines[0] == ("Zuordnung: ABASTU | "
+                        "Herr Dr. med. Sascha Orlik (Arzt)")
+    assert lines[1] == ""
+    assert lines[2].startswith("Hallo, hier Frau Duft")
+    assert lines[3] == ""
+    assert lines[4] == ("Datei: voicemail-2026-09-10_10-15.wav | "
+                        "Audio: 0:25 min | Anrufer: 00497432994360")
+    assert lines[5] == comment_marker("doc:55")
+
+
+def test_comment_company_only_shows_kubez(tmp_path):
+    identify = {"fromPhoneNrInfos": {
+        "foundType": "COMPANY",
+        "items": [{"type": "COMPANY", "id": 94, "name": "abasoft",
+                   "charsLeftOut": 3}]}}
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET,
+                        identify=identify)
+    processor = _processor(_config(tmp_path), client, llm=None,
+                           labels=("ABASTU", None))
+    processor.process_ticket(4711)
+
+    body = client.comments[0][2]
+    assert body.split("\n")[0] == "Zuordnung: ABASTU"
+
+
+def test_comment_unknown_number_shows_reason(tmp_path):
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET)
+    processor = _processor(_config(tmp_path), client, llm=None)
+    processor.process_ticket(4711)
+
+    body = client.comments[0][2]
+    assert body.split("\n")[0] == ("Zuordnung: Rufnummer in TANSS nicht "
+                                   "bekannt - keine automatische Zuordnung.")
 
 
 def test_without_llm_assignment_still_happens(tmp_path):
@@ -328,7 +379,8 @@ def test_mail_attachment_from_storage(tmp_path):
 
     assert len(client.comments) == 1
     _, title, body, _ = client.comments[0]
-    assert "voicemail-2026-09-15_08-00.wav" in title
+    assert title == "Automatisch erzeugtes Transkript"
+    assert "Datei: voicemail-2026-09-15_08-00.wav" in body
     assert comment_marker(
         "mail:356324:voicemail-2026-09-15_08-00.wav") in body
     assert processor.state.is_done(

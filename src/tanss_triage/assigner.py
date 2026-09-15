@@ -26,6 +26,10 @@ class Assignment:
     company_id: int | None = None
     remitter_id: int | None = None
     note: str = ""
+    # Anzeige-Fallbacks aus der identify-Antwort, falls die DB-Beschriftung
+    # (KUBEZ, formatierte Person) nicht verfügbar ist.
+    company_label: str = ""
+    remitter_label: str = ""
 
     @property
     def has_change(self):
@@ -56,7 +60,7 @@ def multi_company_checker(db_cfg):
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "SELECT COUNT(DISTINCT firmenID) FROM "
-                        "mitarbeiter_firmen WHERE maID = %s",
+                        "mitarbeiter_firmen WHERE mitarbeiterID = %s",
                         (employee_id,))
                     (count,) = cursor.fetchone()
             finally:
@@ -119,7 +123,8 @@ def decide_assignment(identify_content, is_multi_company,
             return Assignment(
                 company_id=company_id, remitter_id=employee_id,
                 note="Rufnummer eindeutig: %s (Firma %s)."
-                     % (employee.get("name") or employee_id, company_id))
+                     % (employee.get("name") or employee_id, company_id),
+                remitter_label=employee.get("name") or "")
         if company_id:
             return Assignment(
                 company_id=company_id,
@@ -146,7 +151,10 @@ def decide_assignment(identify_content, is_multi_company,
         candidates = {item.get("companyId") for item in inactive}
         candidates.discard(None)
     if len(candidates) == 1:
-        return Assignment(company_id=candidates.pop(),
+        company_id = candidates.pop()
+        label = next((item.get("name") or "" for item in companies
+                      if item.get("id") == company_id), "")
+        return Assignment(company_id=company_id, company_label=label,
                           note="Rufnummer eindeutig einer Firma zugeordnet.")
     if len(candidates) > 1:
         return Assignment(note="Rufnummer passt zu mehreren Firmen - "
