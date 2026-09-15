@@ -88,6 +88,35 @@ def test_caller_number_with_separators():
     assert extract_phone_number("kein Anschluss") == ""
 
 
+def test_normalize_phone_number():
+    from tanss_triage.processor import normalize_phone_number
+    assert normalize_phone_number("0049702451366") == "0702451366"
+    assert normalize_phone_number("+49702451366") == "0702451366"
+    assert normalize_phone_number("0702451366") == "0702451366"   # schon national
+    assert normalize_phone_number("0043123456") == "0043123456"   # Ausland bleibt
+    assert normalize_phone_number("") == ""
+
+
+def test_assignment_retries_with_national_number(tmp_path):
+    # identify kennt nur die nationale Schreibweise (wie TANSS sie pflegt)
+    subject = ("Sie haben eine Sprachnachricht von  0049702451366 "
+               "in Zentrale Überlauf erhalten")
+    history = {"mails": [dict(STARFACE_HISTORY["mails"][0],
+                              subject=subject)], "comments": []}
+    identify_map = {"0702451366": {"fromPhoneNrInfos": {
+        "foundType": "COMPANY",
+        "items": [{"type": "COMPANY", "id": 2249, "name": "Zahnarzt Wendlingen",
+                   "charsLeftOut": 0}]}}}
+    client = FakeClient(AUDIO_DOCUMENTS, history, STARFACE_TICKET,
+                        identify_map=identify_map)
+    processor = _processor(_config(tmp_path), client, llm=None)
+    processor.process_ticket(4711)
+
+    assert client.identified_numbers == ["0049702451366", "0702451366"]
+    _, update = client.updates[0]
+    assert update["companyId"] == 2249
+
+
 def test_caller_from_body_when_subject_empty():
     number, box = extract_caller_info({"subject": "",
                                        "bodyPlain": STARFACE_BODY})
@@ -116,13 +145,18 @@ def test_marker_detection():
 
 # -- Gesamtablauf mit Mocks --------------------------------------------------
 
+NOT_FOUND = {"fromPhoneNrInfos": {"foundType": "NONE", "items": []}}
+
+
 class FakeClient:
-    def __init__(self, documents, history, ticket, identify=None):
+    def __init__(self, documents, history, ticket, identify=None,
+                 identify_map=None):
         self.documents = documents
         self.history = history
         self.ticket = ticket
-        self.identify = identify or {"fromPhoneNrInfos":
-                                     {"foundType": "NONE", "items": []}}
+        self.identify = identify or NOT_FOUND
+        self.identify_map = identify_map    # Nummer -> Antwort (optional)
+        self.identified_numbers = []
         self.comments = []
         self.updates = []
 
@@ -147,6 +181,9 @@ class FakeClient:
         self.updates.append((ticket_id, ticket))
 
     def identify_phone_number(self, number):
+        self.identified_numbers.append(number)
+        if self.identify_map is not None:
+            return self.identify_map.get(number, NOT_FOUND)
         return self.identify
 
     def get_company_employees(self, company_id):

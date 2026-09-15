@@ -5,6 +5,17 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.3.3] - 2026-09-15
+
+### Behoben
+
+- Rufnummern-Zuordnung fand national gepflegte Nummern nicht: Starface
+  liefert international (0049702451366), TANSS speichert national
+  (07024/51366), und der identify-Endpunkt gleicht das 0049-Präfix nicht
+  selbst an. Findet die gelieferte Nummer nichts, wird jetzt zusätzlich
+  die auf 0... normalisierte Schreibweise probiert (0049/+49 -> 0;
+  ausländische Nummern bleiben unverändert).
+
 ## [0.3.2] - 2026-09-15
 
 ### Geändert

@@ -104,6 +104,22 @@ def extract_phone_number(text):
     return ""
 
 
+def normalize_phone_number(number, country_code="49"):
+    """Bringt 0049... / +49... auf die nationale Schreibweise 0...
+
+    Starface liefert Anrufernummern international (0049702451366), TANSS
+    pflegt sie überwiegend national (07024/51366) - und der
+    identify-Endpunkt normalisiert das 0049-Präfix nicht selbst.
+    Ausländische Nummern (anderes Präfix) bleiben unverändert.
+    """
+    if not number:
+        return number
+    for prefix in ("00" + country_code, "+" + country_code):
+        if number.startswith(prefix) and len(number) > len(prefix):
+            return "0" + number[len(prefix):]
+    return number
+
+
 def extract_caller_info(mail):
     """Zieht Anrufernummer und Voicemail-Box aus der Starface-Mail.
 
@@ -374,15 +390,35 @@ class Processor:
             return self.transcriber.transcribe(path)
 
     def _assign(self, caller_number):
-        try:
-            identified = self.client.identify_phone_number(caller_number)
-        except Exception as error:
-            LOG.warning("Rufnummern-Identifikation für %s fehlgeschlagen: %s",
-                        caller_number, error)
-            return Assignment(note="Rufnummern-Identifikation fehlgeschlagen.")
-        return decide_assignment(
-            identified, self.is_multi_company,
-            assign_remitter=self.cfg.assignment.assign_remitter)
+        """Rufnummern-Zuordnung; probiert internationale UND nationale Form.
+
+        Erst die Nummer wie geliefert, dann - wenn nichts gefunden wurde -
+        die auf 0... normalisierte Schreibweise, denn TANSS pflegt Nummern
+        national und identify gleicht 0049... nicht selbst an.
+        """
+        candidates = [caller_number]
+        normalized = normalize_phone_number(caller_number)
+        if normalized != caller_number:
+            candidates.append(normalized)
+
+        assignment = Assignment(note="Rufnummern-Identifikation "
+                                     "fehlgeschlagen.")
+        for candidate in candidates:
+            try:
+                identified = self.client.identify_phone_number(candidate)
+            except Exception as error:
+                LOG.warning("Rufnummern-Identifikation für %s "
+                            "fehlgeschlagen: %s", candidate, error)
+                continue
+            assignment = decide_assignment(
+                identified, self.is_multi_company,
+                assign_remitter=self.cfg.assignment.assign_remitter)
+            if assignment.has_change:
+                if candidate != caller_number:
+                    LOG.info("Rufnummer %s erst in nationaler Schreibweise "
+                             "%s gefunden.", caller_number, candidate)
+                break
+        return assignment
 
     def _build_update(self, ticket, is_starface, assignment, triage_result):
         """Baut das PUT-Objekt; None, wenn nichts zu ändern ist.
