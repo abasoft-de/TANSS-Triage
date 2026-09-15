@@ -5,6 +5,17 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.1.3] - 2026-09-15
+
+### Behoben
+
+- Login scheiterte mit HTTP 400 "Bad request", wenn die REST-API der
+  Installation hinter dem Präfix `/backend` liegt (der nackte Pfad
+  `/api/v1/login` landet dann im PHP-Frontend). Der Client probiert jetzt
+  beide Varianten, merkt sich die funktionierende Basis-URL und empfiehlt
+  im Log, `TANSS_BASE_URL` entsprechend zu setzen. Ein 403 (falsche
+  Zugangsdaten) bricht die Suche sofort ab.
+
 ## [0.1.2] - 2026-09-15
 
 ### Behoben

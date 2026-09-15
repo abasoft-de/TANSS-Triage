@@ -64,23 +64,46 @@ class TanssClient:
     # -- Anmeldung
 
     def _login(self):
-        """Holt ein frisches Token. Wirft TanssApiError bei Ablehnung."""
-        response = self._session.post(
-            self.base_url + "/api/v1/login",
-            json={"username": self.username, "password": self.password},
-            timeout=self.timeout)
-        if response.status_code != 200:
-            raise TanssApiError(
+        """Holt ein frisches Token. Wirft TanssApiError bei Ablehnung.
+
+        Je nach Installation liegt die REST-API nicht direkt unter
+        /api/v1, sondern hinter dem Backend-Präfix /backend/api/v1 -
+        der nackte Pfad landet dann im PHP-Frontend, das mit einem
+        generischen 400 "Bad request" antwortet. Darum werden beide
+        Varianten probiert und die funktionierende Basis-URL behalten.
+        Ein 403 dagegen kommt von der echten API (falsche Zugangsdaten)
+        und beendet die Suche sofort.
+        """
+        candidates = [self.base_url]
+        if not self.base_url.endswith("/backend"):
+            candidates.append(self.base_url + "/backend")
+        last_error = None
+        for base in candidates:
+            response = self._session.post(
+                base + "/api/v1/login",
+                json={"username": self.username, "password": self.password},
+                timeout=self.timeout)
+            if response.status_code == 200:
+                content = response.json().get("content") or {}
+                api_key = content.get("apiKey", "")
+                if not api_key:
+                    raise TanssApiError("Login-Antwort ohne apiKey.")
+                if base != self.base_url:
+                    LOG.info("API-Endpunkt liegt unter %s - am besten "
+                             "TANSS_BASE_URL in der .env darauf setzen.", base)
+                    self.base_url = base
+                self._api_key = api_key    # enthält bereits "Bearer "
+                LOG.info("An TANSS angemeldet (employeeId %s).",
+                         content.get("employeeId"))
+                return
+            last_error = TanssApiError(
                 "Login an %s fehlgeschlagen (HTTP %d): %s"
-                % (self.base_url, response.status_code, response.text[:300]),
+                % (base, response.status_code, response.text[:300]),
                 status=response.status_code)
-        content = response.json().get("content") or {}
-        api_key = content.get("apiKey", "")
-        if not api_key:
-            raise TanssApiError("Login-Antwort ohne apiKey.")
-        self._api_key = api_key            # enthält bereits "Bearer "
-        LOG.info("An TANSS angemeldet (employeeId %s).",
-                 content.get("employeeId"))
+            if response.status_code == 403:
+                # Echte API-Antwort: Zugangsdaten falsch, kein Pfadproblem.
+                break
+        raise last_error
 
     def _request(self, method, path, *, json_body=None, params=None,
                  _retry=True):
