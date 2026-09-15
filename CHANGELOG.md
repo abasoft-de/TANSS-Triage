@@ -5,6 +5,21 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.4.0] - 2026-09-15
+
+### Behoben
+
+- **Rufnummern-Zuordnung funktioniert jetzt real**: `POST
+  /api/v1/phoneCalls/identify` antwortet - anders als dokumentiert - nicht
+  mit `fromPhoneNrInfos`/`foundType`/`items`, sondern flach mit
+  `fromCompanyId`/`fromEmployeeId`/`numberIdentifyState`. Die Auswertung
+  versteht jetzt beide Formen. Da die flache Antwort weder
+  Zentrale-vs-Durchwahl noch Eindeutigkeit hergibt, klärt das eine
+  Read-only-DB-Prüfung (Ziffernvergleich gegen die Nummernfelder von
+  `firmen` und `mitarbeiter`): Melder wird nur gesetzt, wenn die Nummer
+  nicht die Firmenzentrale ist und genau einem aktiven Mitarbeiter
+  gehört; ohne DB wird nur die Firma zugewiesen.
+
 ## [0.3.4] - 2026-09-15
 
 ### Geändert

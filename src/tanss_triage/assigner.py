@@ -75,13 +75,24 @@ def multi_company_checker(db_cfg):
 
 
 def decide_assignment(identify_content, is_multi_company,
-                      assign_remitter=True):
+                      assign_remitter=True, phone_roles=None):
     """Wendet die Zuordnungsregeln auf eine identify-Antwort an.
 
-    identify_content ist der content der API-Antwort (TnsPhoneCall),
-    is_multi_company eine Funktion employee_id -> True/False/None.
+    identify_content ist der content der API-Antwort. Die Doku beschreibt
+    ein fromPhoneNrInfos-Objekt mit foundType und items[]; real (TANSS
+    2026) kommt eine flache Antwort mit fromCompanyId/fromEmployeeId und
+    numberIdentifyState - beide Formen werden verstanden.
+
+    is_multi_company: Funktion employee_id -> True/False/None.
+    phone_roles: Funktion company_id -> (ist_firmennummer, [mitarbeiter_ids
+    mit dieser Nummer]) oder None; nur die flache Form braucht sie, weil
+    dort Zentrale-vs-Durchwahl und Eindeutigkeit fehlen.
     """
-    infos = (identify_content or {}).get("fromPhoneNrInfos") or {}
+    content = identify_content or {}
+    if not content.get("fromPhoneNrInfos"):
+        return _decide_flat(content, is_multi_company, assign_remitter,
+                            phone_roles)
+    infos = content.get("fromPhoneNrInfos") or {}
     found_type = infos.get("foundType") or "NONE"
     items = infos.get("items") or []
     if not items and infos.get("result"):
@@ -161,3 +172,45 @@ def decide_assignment(identify_content, is_multi_company,
                                "keine automatische Zuordnung.")
     return Assignment(note="Rufnummer in TANSS nicht bekannt - "
                            "keine automatische Zuordnung.")
+
+
+def _decide_flat(content, is_multi_company, assign_remitter, phone_roles):
+    """Zuordnungsregeln für die flache identify-Antwort.
+
+    Sie nennt höchstens EINE Firma und EINEN Mitarbeiter, ohne zu sagen,
+    ob die Nummer die Zentrale oder ein persönlicher Anschluss ist -
+    das klärt phone_roles über die Datenbank. Ohne diese Klärung wird
+    kein Melder gesetzt (eindeutig ist Pflicht), die Firma aber schon.
+    """
+    company_id = content.get("fromCompanyId") or 0
+    employee_id = content.get("fromEmployeeId") or 0
+    if company_id <= 0:
+        return Assignment(note="Rufnummer in TANSS nicht bekannt - "
+                               "keine automatische Zuordnung.")
+
+    if employee_id > 0:
+        multi = is_multi_company(employee_id)
+        if multi is True:
+            return Assignment(note="Mitarbeiter %d arbeitet in mehreren "
+                                   "Firmen - keine automatische Zuordnung."
+                                   % employee_id)
+        if multi is None:
+            return Assignment(note="Mehrfach-Firmen-Prüfung nicht möglich "
+                                   "(DB nicht erreichbar) - "
+                                   "sicherheitshalber keine automatische "
+                                   "Zuordnung.")
+        roles = phone_roles(company_id) if phone_roles else None
+        if roles is not None and assign_remitter:
+            is_company_number, employee_ids = roles
+            if not is_company_number and employee_ids == [employee_id]:
+                return Assignment(
+                    company_id=company_id, remitter_id=employee_id,
+                    note="Rufnummer eindeutig: Mitarbeiter %d (Firma %d)."
+                         % (employee_id, company_id))
+        return Assignment(
+            company_id=company_id,
+            note="Firma zugewiesen, Melder offen (Nummer nicht eindeutig "
+                 "persönlich).")
+
+    return Assignment(company_id=company_id,
+                      note="Rufnummer eindeutig einer Firma zugeordnet.")

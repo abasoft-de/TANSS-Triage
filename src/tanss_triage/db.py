@@ -15,6 +15,7 @@ Letzte Änderung: 2026-09-15
 
 import logging
 import os
+import re
 
 LOG = logging.getLogger("tanss_triage.db")
 
@@ -69,6 +70,47 @@ def format_person(row):
     if funktion:
         label = "%s (%s)" % (label, funktion) if label else funktion
     return label or None
+
+
+def phone_number_roles(db_cfg, number, company_id):
+    """Prüft, wie eine (nationale) Rufnummer in TANSS hinterlegt ist.
+
+    Die identify-Antwort sagt nur, WEN TANSS gefunden hat - nicht, ob die
+    Nummer die Firmenzentrale ist oder ein eindeutiger persönlicher
+    Anschluss. Das klärt dieser Blick in die Datenbank: verglichen werden
+    reine Ziffernfolgen, damit 07024/51366 und 0702451366 gleich sind.
+
+    Liefert (ist_firmennummer, [IDs aktiver Mitarbeiter mit genau dieser
+    Nummer]) - oder None, wenn die Datenbank nicht verfügbar ist.
+    """
+    digits = re.sub(r"\D", "", number or "")
+    if not digits:
+        return (False, [])
+    rows = _query(db_cfg, """
+        SELECT COUNT(*) AS n FROM firmen
+        WHERE ID = %s AND %s IN (
+            REGEXP_REPLACE(CONCAT(COALESCE(vorwahl, ''), telefon),
+                           '[^0-9]', ''),
+            REGEXP_REPLACE(telnr, '[^0-9]', ''),
+            REGEXP_REPLACE(telefax, '[^0-9]', ''),
+            REGEXP_REPLACE(faxnr, '[^0-9]', ''))
+        """, (company_id, digits))
+    if rows is None:
+        return None
+    is_company_number = rows[0]["n"] > 0
+    rows = _query(db_cfg, """
+        SELECT ID FROM mitarbeiter
+        WHERE aktiv = 'Y' AND %s IN (
+            REGEXP_REPLACE(tel, '[^0-9]', ''),
+            REGEXP_REPLACE(tel2, '[^0-9]', ''),
+            REGEXP_REPLACE(mobil, '[^0-9]', ''),
+            REGEXP_REPLACE(mobil2, '[^0-9]', ''),
+            REGEXP_REPLACE(`private`, '[^0-9]', ''),
+            REGEXP_REPLACE(persFaxNr, '[^0-9]', ''))
+        """, (digits,))
+    if rows is None:
+        return None
+    return is_company_number, [row["ID"] for row in rows]
 
 
 def fetch_assignment_labels(db_cfg, company_id=None, employee_id=None):

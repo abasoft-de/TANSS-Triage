@@ -24,7 +24,8 @@ import threading
 from . import __version__
 from .assigner import multi_company_checker
 from .config import load_config
-from .db import fetch_assignment_labels, fetch_mail_attachments
+from .db import (fetch_assignment_labels, fetch_mail_attachments,
+                 phone_number_roles)
 from .llm import build_llm
 from .logging_setup import setup_logging
 from .processor import Processor
@@ -74,7 +75,9 @@ def build_processor(cfg, client):
         mail_attachments_lookup=lambda mail_id: fetch_mail_attachments(
             cfg.db, mail_id),
         labels_lookup=lambda company_id, employee_id: fetch_assignment_labels(
-            cfg.db, company_id, employee_id))
+            cfg.db, company_id, employee_id),
+        phone_roles_lookup=lambda number, company_id: phone_number_roles(
+            cfg.db, number, company_id))
 
 
 def serve(cfg, client):

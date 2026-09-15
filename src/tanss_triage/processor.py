@@ -184,7 +184,7 @@ class Processor:
 
     def __init__(self, cfg, client, transcriber, llm, state,
                  is_multi_company, mail_attachments_lookup=None,
-                 labels_lookup=None):
+                 labels_lookup=None, phone_roles_lookup=None):
         self.cfg = cfg
         self.client = client
         self.transcriber = transcriber
@@ -198,6 +198,11 @@ class Processor:
         # Zuordnungszeile; None-Werte lösen die Fallbacks aus.
         self.labels_lookup = (labels_lookup
                               or (lambda company_id, employee_id: (None, None)))
+        # (nummer, company_id) -> (ist_firmennummer, [mitarbeiter_ids])
+        # oder None; klärt Zentrale-vs-Durchwahl für die flache
+        # identify-Antwort.
+        self.phone_roles_lookup = (phone_roles_lookup
+                                   or (lambda number, company_id: None))
 
     # -- Hauptablauf
 
@@ -413,7 +418,9 @@ class Processor:
                 continue
             assignment = decide_assignment(
                 identified, self.is_multi_company,
-                assign_remitter=self.cfg.assignment.assign_remitter)
+                assign_remitter=self.cfg.assignment.assign_remitter,
+                phone_roles=lambda company_id, number=candidate:
+                    self.phone_roles_lookup(number, company_id))
             if assignment.has_change:
                 if candidate != normalized:
                     LOG.info("Rufnummer %s erst in der gelieferten "

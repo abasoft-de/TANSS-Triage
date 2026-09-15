@@ -120,3 +120,70 @@ def test_inactive_employee_assigns_company_only():
     assignment = decide_assignment(content, _single_company)
     assert assignment.company_id == 94
     assert assignment.remitter_id is None
+
+
+# -- Flache identify-Antwort (reale TANSS-Antwort, ohne fromPhoneNrInfos) ----
+
+def _flat(company_id, employee_id):
+    return {"fromCompanyId": company_id, "fromEmployeeId": employee_id,
+            "fromCompanyPercent": 0, "numberIdentifyState": "IDENTIFIED"}
+
+
+def test_flat_unknown_number():
+    assignment = decide_assignment(_flat(0, 0), _single_company)
+    assert not assignment.has_change
+    assert "nicht bekannt" in assignment.note
+
+
+def test_flat_company_only():
+    assignment = decide_assignment(_flat(2249, 0), _single_company)
+    assert assignment.company_id == 2249
+    assert assignment.remitter_id is None
+
+
+def test_flat_central_number_assigns_company_only():
+    # TANSS nennt einen Mitarbeiter, aber die Nummer ist die Zentrale
+    assignment = decide_assignment(
+        _flat(2249, 9862), _single_company,
+        phone_roles=lambda cid: (True, [9862]))
+    assert assignment.company_id == 2249
+    assert assignment.remitter_id is None
+
+
+def test_flat_unique_personal_number_sets_remitter():
+    assignment = decide_assignment(
+        _flat(2249, 9862), _single_company,
+        phone_roles=lambda cid: (False, [9862]))
+    assert assignment.company_id == 2249
+    assert assignment.remitter_id == 9862
+
+
+def test_flat_shared_personal_number_no_remitter():
+    assignment = decide_assignment(
+        _flat(2249, 9862), _single_company,
+        phone_roles=lambda cid: (False, [9862, 12]))
+    assert assignment.company_id == 2249
+    assert assignment.remitter_id is None
+
+
+def test_flat_multi_company_blocks_everything():
+    assignment = decide_assignment(
+        _flat(2249, 9862), lambda _id: True,
+        phone_roles=lambda cid: (False, [9862]))
+    assert not assignment.has_change
+
+
+def test_flat_without_db_company_only_no_remitter():
+    # Rollen-Prüfung nicht möglich -> Firma ja, Melder sicherheitshalber nein
+    assignment = decide_assignment(
+        _flat(2249, 9862), _single_company, phone_roles=lambda cid: None)
+    assert assignment.company_id == 2249
+    assert assignment.remitter_id is None
+
+
+def test_flat_assign_remitter_disabled():
+    assignment = decide_assignment(
+        _flat(2249, 9862), _single_company, assign_remitter=False,
+        phone_roles=lambda cid: (False, [9862]))
+    assert assignment.company_id == 2249
+    assert assignment.remitter_id is None
