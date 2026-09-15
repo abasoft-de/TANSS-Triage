@@ -390,16 +390,17 @@ class Processor:
             return self.transcriber.transcribe(path)
 
     def _assign(self, caller_number):
-        """Rufnummern-Zuordnung; probiert internationale UND nationale Form.
+        """Rufnummern-Zuordnung; probiert nationale UND internationale Form.
 
-        Erst die Nummer wie geliefert, dann - wenn nichts gefunden wurde -
-        die auf 0... normalisierte Schreibweise, denn TANSS pflegt Nummern
-        national und identify gleicht 0049... nicht selbst an.
+        Zuerst die auf 0... normalisierte Schreibweise - das ist der
+        Normalfall, denn Starface liefert 0049..., TANSS pflegt national
+        und identify gleicht das Präfix nicht selbst an. Nur wenn dabei
+        nichts gefunden wird, noch die Nummer wie geliefert.
         """
-        candidates = [caller_number]
         normalized = normalize_phone_number(caller_number)
-        if normalized != caller_number:
-            candidates.append(normalized)
+        candidates = [normalized]
+        if caller_number != normalized:
+            candidates.append(caller_number)
 
         assignment = Assignment(note="Rufnummern-Identifikation "
                                      "fehlgeschlagen.")
@@ -414,9 +415,10 @@ class Processor:
                 identified, self.is_multi_company,
                 assign_remitter=self.cfg.assignment.assign_remitter)
             if assignment.has_change:
-                if candidate != caller_number:
-                    LOG.info("Rufnummer %s erst in nationaler Schreibweise "
-                             "%s gefunden.", caller_number, candidate)
+                if candidate != normalized:
+                    LOG.info("Rufnummer %s erst in der gelieferten "
+                             "Schreibweise %s gefunden.", normalized,
+                             candidate)
                 break
         return assignment
 

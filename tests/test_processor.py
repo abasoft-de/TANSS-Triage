@@ -112,9 +112,29 @@ def test_assignment_retries_with_national_number(tmp_path):
     processor = _processor(_config(tmp_path), client, llm=None)
     processor.process_ticket(4711)
 
-    assert client.identified_numbers == ["0049702451366", "0702451366"]
+    # Normalfall: die nationale Schreibweise wird zuerst (und hier als
+    # einzige) angefragt
+    assert client.identified_numbers == ["0702451366"]
     _, update = client.updates[0]
     assert update["companyId"] == 2249
+
+
+def test_assignment_falls_back_to_delivered_number(tmp_path):
+    # Exot: TANSS kennt die Nummer nur in der gelieferten 0049-Form
+    subject = ("Sie haben eine Sprachnachricht von  0049702451366 "
+               "in Zentrale Überlauf erhalten")
+    history = {"mails": [dict(STARFACE_HISTORY["mails"][0],
+                              subject=subject)], "comments": []}
+    identify_map = {"0049702451366": {"fromPhoneNrInfos": {
+        "foundType": "COMPANY",
+        "items": [{"type": "COMPANY", "id": 2249, "charsLeftOut": 0}]}}}
+    client = FakeClient(AUDIO_DOCUMENTS, history, STARFACE_TICKET,
+                        identify_map=identify_map)
+    processor = _processor(_config(tmp_path), client, llm=None)
+    processor.process_ticket(4711)
+
+    assert client.identified_numbers == ["0702451366", "0049702451366"]
+    assert client.updates[0][1]["companyId"] == 2249
 
 
 def test_caller_from_body_when_subject_empty():

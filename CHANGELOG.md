@@ -5,6 +5,14 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.3.4] - 2026-09-15
+
+### Geändert
+
+- Rufnummern-Zuordnung fragt zuerst die nationale Schreibweise an (der
+  Normalfall) und nur bei Fehlschlag die gelieferte 0049-Form - spart
+  pro Voicemail einen API-Aufruf.
+
 ## [0.3.3] - 2026-09-15
 
 ### Behoben
