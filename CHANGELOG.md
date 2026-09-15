@@ -5,6 +5,15 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.2.1] - 2026-09-15
+
+### Behoben
+
+- Anrufernummer-Extraktion: Starface nennt die Nummer im Betreff teils
+  doppelt ("von 0157... 0157... in ..."); die beiden Nummern verschmolzen
+  zu einer Doppelnummer, an der auch die Rufnummern-Zuordnung scheiterte.
+  Jetzt zählt die letzte zusammenhängende Ziffernfolge.
+
 ## [0.2.0] - 2026-09-15
 
 ### Hinzugefügt

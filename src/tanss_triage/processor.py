@@ -86,14 +86,32 @@ def find_starface_mail(history, sender_patterns):
     return None
 
 
+def extract_phone_number(text):
+    """Letzte Rufnummer in einem Text.
+
+    Zuerst zusammenhängende Ziffernfolgen: Starface nennt die Nummer im
+    Betreff teils doppelt ("von 0157... 0157... in ...") - ein Muster, das
+    Leerzeichen in der Nummer erlaubt, würde beide zu einer verschmelzen.
+    Erst wenn nichts Zusammenhängendes da ist, sind Trennzeichen (ohne
+    Leerzeichen) erlaubt, etwa 06154/6006-0.
+    """
+    contiguous = re.findall(r"\+?\d{6,}", text or "")
+    if contiguous:
+        return contiguous[-1]
+    grouped = re.findall(r"\+?\d[\d/().-]{4,}\d", text or "")
+    if grouped:
+        return re.sub(r"[^\d+]", "", grouped[-1])
+    return ""
+
+
 def extract_caller_info(mail):
     """Zieht Anrufernummer und Voicemail-Box aus der Starface-Mail.
 
     Betreff: "Sie haben eine Sprachnachricht von <Name?> <Nummer> in <Box>
     erhalten" - vor der Nummer kann ein aufgelöster Name samt Klammern
-    stehen, darum gilt: die letzte lange Ziffernfolge vor " in " ist die
-    Nummer. Fällt der Betreff aus, hilft der Mailtext ("Sprachmitteilung
-    von <Nummer>", "Voicemail-Box <Box> der STARFACE").
+    stehen, darum gilt: die letzte Rufnummer vor " in " zählt. Fällt der
+    Betreff aus, hilft der Mailtext ("Sprachmitteilung von <Nummer>",
+    "Voicemail-Box <Box> der STARFACE").
     """
     subject = (mail or {}).get("subject") or ""
     body = (mail or {}).get("bodyPlain") or ""
@@ -102,15 +120,12 @@ def extract_caller_info(mail):
     box = ""
     match = re.search(r"von\s+(.*?)\s+in\s+(.+?)\s+erhalten", subject)
     if match:
-        numbers = re.findall(r"\+?\d[\d\s/().-]{5,}\d", match.group(1))
-        if numbers:
-            number = re.sub(r"[^\d+]", "", numbers[-1])
+        number = extract_phone_number(match.group(1))
         box = match.group(2).strip()
     if not number:
-        match = re.search(r"Sprachmitteilung von\s*(\+?[\d\s/().-]{6,})",
-                          body)
+        match = re.search(r"Sprachmitteilung von([^\n]*)", body)
         if match:
-            number = re.sub(r"[^\d+]", "", match.group(1))
+            number = extract_phone_number(match.group(1))
     if not box:
         match = re.search(r"Voicemail-Box\s+(.+?)\s+der", body)
         if match:

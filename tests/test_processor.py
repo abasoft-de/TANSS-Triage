@@ -71,6 +71,23 @@ def test_caller_from_subject_with_name():
     assert number == "004971359390790"
 
 
+def test_caller_with_duplicated_number():
+    # Starface nennt die Nummer teils doppelt (Name = Nummer) - das darf
+    # nicht zu einer verschmolzenen Doppelnummer werden.
+    number, box = extract_caller_info({"subject": (
+        "Sie haben eine Sprachnachricht von Anwendung 004915786757169 "
+        "004915786757169 in Zentrale Nacht erhalten")})
+    assert number == "004915786757169"
+    assert box == "Zentrale Nacht"
+
+
+def test_caller_number_with_separators():
+    from tanss_triage.processor import extract_phone_number
+    assert extract_phone_number("Zentrale 06154/6006-0") == "0615460060"
+    assert extract_phone_number("+49 30 1234567") == "1234567"
+    assert extract_phone_number("kein Anschluss") == ""
+
+
 def test_caller_from_body_when_subject_empty():
     number, box = extract_caller_info({"subject": "",
                                        "bodyPlain": STARFACE_BODY})
