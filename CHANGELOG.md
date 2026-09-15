@@ -5,6 +5,20 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.1.2] - 2026-09-15
+
+### Behoben
+
+- `.env`, `config.toml` und `VERSION` wurden nach einer nicht-editierbaren
+  Installation (`pip install .`, wie sie deploy.ps1 auf dem Server macht)
+  nicht gefunden: der Projektstamm wurde relativ zur Moduldatei berechnet
+  und zeigte damit in die site-packages des venv. Der Stamm wird jetzt über
+  `TANSS_TRIAGE_HOME`, den Quellbaum (editierbare Installation) oder das
+  Arbeitsverzeichnis bestimmt - systemd setzt `WorkingDirectory` passend,
+  ein manueller Start braucht vorher `cd` in den Projektordner.
+- Selbsttest in deploy.ps1 läuft jetzt im Zielverzeichnis (zeigte sonst
+  Version 0.0.0).
+
 ## [0.1.1] - 2026-09-10
 
 ### Geändert

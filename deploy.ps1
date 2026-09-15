@@ -61,7 +61,7 @@ if ($DryRun) {
     Write-Host "  scp $($Files -join ', ') ${Address}:$TargetDir/"
     Write-Host "  scp -r $($Directories -join ', ') ${Address}:$TargetDir/"
     Write-Host "  ssh $Address 'python3 -m venv .venv && pip install .'"
-    Write-Host "  ssh $Address '$TargetDir/.venv/bin/python -m tanss_triage --version'"
+    Write-Host "  ssh $Address 'cd $TargetDir && .venv/bin/python -m tanss_triage --version'"
     exit 0
 }
 
@@ -90,7 +90,9 @@ $Setup = "cd $TargetDir; " +
 if ($LASTEXITCODE -ne 0) { Write-Host "FEHLER  Installation scheiterte." -ForegroundColor Red; exit 1 }
 
 Write-Host "4/4  Selbsttest"
-& ssh @SshOptions $Address "$TargetDir/.venv/bin/python -m tanss_triage --version"
+# cd ist Pflicht: das Programm sucht .env/config.toml/VERSION im
+# Arbeitsverzeichnis (bzw. unter TANSS_TRIAGE_HOME).
+& ssh @SshOptions $Address "cd $TargetDir && .venv/bin/python -m tanss_triage --version"
 $Code = $LASTEXITCODE
 Write-Host ""
 if ($Code -eq 0) {

@@ -71,6 +71,10 @@ cp config.example.toml config.toml   # Verhalten anpassen (optional)
 
 - `.env`: `TANSS_BASE_URL`, `TANSS_USERNAME`, `TANSS_PASSWORD`; optional
   `ANTHROPIC_API_KEY` (Claude) bzw. `LLM_API_KEY` (lokaler Endpunkt).
+- **Wichtig:** Das Programm sucht `.env`, `config.toml` und `state.db` im
+  Projektstamm - das ist das Arbeitsverzeichnis beim Start (systemd setzt
+  es über `WorkingDirectory`; beim manuellen Start vorher `cd` in den
+  Projektordner) oder, wenn gesetzt, `TANSS_TRIAGE_HOME`.
 - `config.toml`: alle Werte haben Defaults, die Vorlage dokumentiert sie.
   LLM-Provider: `anthropic` (Default, sobald `ANTHROPIC_API_KEY` gesetzt
   ist), `openai_compatible` (lokales Modell, `base_url` z. B.

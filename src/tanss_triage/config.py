@@ -8,7 +8,7 @@ Beschreibung: Konfiguration von TANSS-Triage. Secrets kommen aus der .env
               werden relativ zum Projektstamm gesucht, damit ein systemd-Dienst
               und ein manueller Aufruf dieselben Werte sehen. check() liefert
               Klartextfehler statt Ausnahmen beim Laden.
-Letzte Änderung: 2026-09-10
+Letzte Änderung: 2026-09-15
 """
 
 import os
@@ -21,9 +21,10 @@ except ModuleNotFoundError:                        # Python < 3.11
 
 from dotenv import load_dotenv
 
-# Projektstamm = zwei Ebenen über diesem Modul (src/tanss_triage/config.py).
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__))))
+# Der Projektstamm kommt aus dem Paket selbst (TANSS_TRIAGE_HOME, Quellbaum
+# oder Arbeitsverzeichnis) - NICHT relativ zu dieser Datei rechnen: nach
+# "pip install ." liegt sie in site-packages und zeigt ins Leere.
+from . import BASE_DIR
 
 
 @dataclass

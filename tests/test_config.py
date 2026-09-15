@@ -7,7 +7,18 @@ Beschreibung: Prüft Laden, Defaults und Validierung der Konfiguration.
 Letzte Änderung: 2026-09-10
 """
 
+from tanss_triage import _find_base_dir
 from tanss_triage.config import load_config
+
+
+def test_base_dir_prefers_explicit_home(tmp_path):
+    # 1. TANSS_TRIAGE_HOME gewinnt immer
+    assert _find_base_dir({"TANSS_TRIAGE_HOME": str(tmp_path)}) \
+        == str(tmp_path)
+    # 2. Ohne Override läuft dieser Test im editierbaren Quellbaum -
+    #    dort liegt die VERSION-Datei
+    import os
+    assert os.path.isfile(os.path.join(_find_base_dir({}), "VERSION"))
 
 
 def _clean_env(monkeypatch):
