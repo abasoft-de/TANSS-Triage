@@ -223,7 +223,7 @@ def test_starface_ticket_full_flow(tmp_path):
     assert title == "Automatisch erzeugtes Transkript"
     assert "Frau Duft, das Fax geht nicht" in body
     assert comment_marker("doc:55") in body
-    assert "Datei: voicemail-2026-09-10_10-15.wav" in body
+    assert "Datei:" not in body
     # Ohne DB-Labels greifen die Fallbacks aus der identify-Antwort
     assert "Zuordnung: Firma 94 | Duft, Petra" in body
     assert internal is True
@@ -282,9 +282,7 @@ def test_comment_format_with_db_labels(tmp_path):
     assert lines[1] == ""
     assert lines[2].startswith("Hallo, hier Frau Duft")
     assert lines[3] == ""
-    assert lines[4] == ("Datei: voicemail-2026-09-10_10-15.wav | "
-                        "Audio: 0:25 min | Anrufer: 00497432994360")
-    assert lines[5] == comment_marker("doc:55")
+    assert lines[4] == comment_marker("doc:55")
 
 
 def test_comment_company_only_shows_kubez(tmp_path):
@@ -380,7 +378,6 @@ def test_mail_attachment_from_storage(tmp_path):
     assert len(client.comments) == 1
     _, title, body, _ = client.comments[0]
     assert title == "Automatisch erzeugtes Transkript"
-    assert "Datei: voicemail-2026-09-15_08-00.wav" in body
     assert comment_marker(
         "mail:356324:voicemail-2026-09-15_08-00.wav") in body
     assert processor.state.is_done(

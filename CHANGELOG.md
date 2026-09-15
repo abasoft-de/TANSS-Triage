@@ -5,6 +5,13 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.3.1] - 2026-09-15
+
+### Geändert
+
+- Die Zeile "Datei: ... | Audio: ... | Anrufer: ..." entfällt im Kommentar;
+  er besteht jetzt aus Zuordnungszeile, Transkript und Marker.
+
 ## [0.3.0] - 2026-09-15
 
 ### Geändert

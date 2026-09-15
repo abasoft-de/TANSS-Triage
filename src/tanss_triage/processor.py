@@ -256,8 +256,7 @@ class Processor:
 
         for source, transcript in transcripts:
             comment_title, comment_body = self._build_comment(
-                source, transcript, starface_mail, caller_number,
-                assignment)
+                source, transcript, starface_mail, assignment)
             if self.cfg.dry_run:
                 LOG.info("[dry-run] Kommentar an Ticket %d:\n%s\n%s",
                          ticket_id, comment_title, comment_body)
@@ -450,8 +449,7 @@ class Processor:
                 return "Zuordnung: %s | %s" % (kubez, person)
         return "Zuordnung: %s" % kubez
 
-    def _build_comment(self, source, transcript, starface_mail,
-                       caller_number, assignment):
+    def _build_comment(self, source, transcript, starface_mail, assignment):
         """Formuliert den Ticket-Kommentar zu einer transkribierten Datei."""
         title = "Automatisch erzeugtes Transkript"
         lines = []
@@ -460,10 +458,5 @@ class Processor:
             lines.append("")
         lines.append(transcript.text or "(keine Sprache erkannt)")
         lines.append("")
-        meta = ["Datei: %s" % (source.file_name or "?"),
-                "Audio: %s min" % format_duration(transcript.duration)]
-        if caller_number:
-            meta.append("Anrufer: %s" % caller_number)
-        lines.append(" | ".join(meta))
         lines.append(comment_marker(source.key))
         return title, "\n".join(lines)
