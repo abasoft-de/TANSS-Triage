@@ -251,6 +251,10 @@ class Processor:
                 and self.cfg.assignment.enabled):
             assignment = self._assign(caller_number)
 
+        combined_transcript = "\n\n".join(
+            transcript.text for _, transcript in transcripts
+            if transcript.text).strip()
+
         triage_result = None
         if starface_mail and self.llm is not None:
             contacts = []
@@ -266,14 +270,13 @@ class Processor:
                 except Exception as error:
                     LOG.warning("Ansprechpartnerliste für Firma %s nicht "
                                 "ladbar: %s", assignment.company_id, error)
-            combined = "\n\n".join(transcript.text
-                                   for _, transcript in transcripts)
-            triage_result = run_triage(self.llm, combined, caller_number,
-                                       voicemail_box, contacts)
+            triage_result = run_triage(self.llm, combined_transcript,
+                                       caller_number, voicemail_box, contacts)
 
         ticket = self.client.get_ticket(ticket_id)
         update, update_notes = self._build_update(ticket, bool(starface_mail),
-                                                  assignment, triage_result)
+                                                  assignment, triage_result,
+                                                  combined_transcript)
 
         for source, transcript in transcripts:
             comment_title, comment_body = self._build_comment(
@@ -429,17 +432,21 @@ class Processor:
                 break
         return assignment
 
-    def _build_update(self, ticket, is_starface, assignment, triage_result):
+    def _build_update(self, ticket, is_starface, assignment, triage_result,
+                      transcript_text=""):
         """Baut das PUT-Objekt; None, wenn nichts zu ändern ist.
 
         Nur Starface-Tickets werden angefasst - und auch dort gilt der
-        Überschreib-Schutz für Betreff und Beschreibung.
+        Überschreib-Schutz für Betreff und Beschreibung. Ohne LLM wird die
+        Boilerplate-Beschreibung durch das nackte Transkript ersetzt.
         """
         if not is_starface:
             return None, []
         update = dict(ticket)
         notes = []
 
+        content_replaceable = should_replace_content(
+            ticket.get("content"), self.cfg.starface.generic_content_patterns)
         if triage_result:
             if should_replace_title(ticket.get("title"),
                                     self.cfg.starface.generic_title_pattern):
@@ -448,14 +455,17 @@ class Processor:
             else:
                 LOG.info("Betreff von Ticket %s wurde schon manuell "
                          "angepasst - bleibt.", ticket.get("id"))
-            if should_replace_content(
-                    ticket.get("content"),
-                    self.cfg.starface.generic_content_patterns):
+            if content_replaceable:
                 update["content"] = triage_result.beschreibung
                 notes.append("Beschreibung gesetzt")
             else:
                 LOG.info("Beschreibung von Ticket %s ohne Starface-"
                          "Boilerplate - bleibt.", ticket.get("id"))
+        elif transcript_text and content_replaceable:
+            # Kein (erfolgreicher) LLM-Lauf: statt der Starface-Boilerplate
+            # soll wenigstens das Transkript in der Beschreibung stehen.
+            update["content"] = transcript_text
+            notes.append("Beschreibung durch Transkript ersetzt")
 
         if assignment.company_id:
             update["companyId"] = assignment.company_id

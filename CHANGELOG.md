@@ -5,6 +5,15 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.4.1] - 2026-09-15
+
+### Geändert
+
+- Ohne LLM (oder wenn der LLM-Lauf scheitert) wird die Ticketbeschreibung
+  eines Starface-Tickets durch das reine Transkript ersetzt, solange noch
+  die Starface-Boilerplate darin steht. Der Betreff bleibt ohne LLM
+  unangetastet; manuell ersetzte Beschreibungen ebenfalls.
+
 ## [0.4.0] - 2026-09-15
 
 ### Behoben

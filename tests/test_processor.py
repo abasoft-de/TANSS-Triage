@@ -375,8 +375,23 @@ def test_without_llm_assignment_still_happens(tmp_path):
     assert len(client.comments) == 1
     _, update = client.updates[0]
     assert update["title"] == STARFACE_SUBJECT       # kein LLM, kein Rewrite
+    # ... aber die Boilerplate-Beschreibung wird durch das Transkript ersetzt
+    assert update["content"] == "Hallo, hier Frau Duft, das Fax geht nicht."
     assert update["companyId"] == 94
     assert update["remitterId"] == 7
+
+
+def test_without_llm_edited_content_is_kept(tmp_path):
+    # Beschreibung wurde schon manuell ersetzt -> Transkript nicht drueber
+    ticket = dict(STARFACE_TICKET, content="Kunde meldet Faxproblem.")
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, ticket,
+                        identify=IDENTIFY_EMPLOYEE)
+    processor = _processor(_config(tmp_path), client, llm=None)
+    processor.process_ticket(4711)
+
+    _, update = client.updates[0]
+    assert update["content"] == "Kunde meldet Faxproblem."
+    assert update["companyId"] == 94                 # Zuordnung läuft trotzdem
 
 
 def test_dry_run_writes_nothing(tmp_path):
