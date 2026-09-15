@@ -5,6 +5,13 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.2.2] - 2026-09-15
+
+### Geändert
+
+- Die harmlose Hugging-Face-Warnung "set a HF_TOKEN" (anonymer
+  Modell-Download, nur Rate-Limit-Hinweis) wird nicht mehr geloggt.
+
 ## [0.2.1] - 2026-09-15
 
 ### Behoben

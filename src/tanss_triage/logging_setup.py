@@ -33,5 +33,8 @@ def setup_logging(cfg):
         root.addHandler(rotating)
 
     # Fremdbibliotheken sollen nicht jedes HTTP-Detail ins Log kippen.
-    for noisy in ("urllib3", "httpx", "huggingface_hub", "faster_whisper"):
+    for noisy in ("urllib3", "httpx", "faster_whisper"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    # huggingface_hub warnt bei jedem anonymen Hub-Kontakt vor Rate-Limits
+    # ("set a HF_TOKEN") - für den einmaligen Modell-Download belanglos.
+    logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
