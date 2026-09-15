@@ -18,9 +18,13 @@ Tickets benachrichtigt - es pollt nicht.
 Für jedes gemeldete Ticket:
 
 1. **Alle Tickets mit Audio-Anhang** (wav, mp3, m4a, ogg, opus, flac, aac,
-   wma): Anhang herunterladen, mit faster-whisper (Default `large-v3`,
-   CPU/int8) vollständig transkribieren, Transkript als internen Kommentar
-   ins Ticket schreiben.
+   wma): Anhang holen, mit faster-whisper (Default `large-v3`, CPU/int8)
+   vollständig transkribieren, Transkript als internen Kommentar ins Ticket
+   schreiben. Audio wird an zwei Stellen gesucht: bei den Ticket-Dokumenten
+   und - der Starface-Normalfall - bei den **Anhängen der Mails** des
+   Tickets. Mail-Anhänge liegen im Storage des TANSS-Servers
+   (`[storage] mail_attachments_dir`) und werden direkt vom Dateisystem
+   gelesen; ohne DB-Zugriff dient die API als Ausweichweg.
 2. **Nur Starface-Tickets** (erkannt am Mail-Absender
    `starface@tele-x.abasoft-gmbh.de` in der Ticket-Historie) zusätzlich:
    - **Rufnummern-Zuordnung** über `POST /api/v1/phoneCalls/identify`:
@@ -123,6 +127,7 @@ python -m tanss_triage                     # Dauerbetrieb: Webhook-Server + Work
 python -m tanss_triage --ticket 250312 --dry-run   # ein Ticket testweise (schreibt nichts)
 python -m tanss_triage --ticket 250312    # ein Ticket scharf nachziehen
 python -m tanss_triage --identify 07432994360      # Rufnummernauflösung ansehen
+python -m tanss_triage --mail 356324       # Mail samt Anhängen zeigen (Diagnose)
 python -m tanss_triage --list-webhooks    # Event-Regeln anzeigen
 ```
 
@@ -140,7 +145,7 @@ nachziehen.
 ## Entwicklung
 
 ```bash
-.venv/bin/python -m pytest        # 43 Tests, ohne Netz und ohne Modelle
+.venv/bin/python -m pytest        # Tests, ohne Netz und ohne Modelle
 ```
 
 Struktur: `webhook_server.py` nimmt Events an und füllt eine Queue,

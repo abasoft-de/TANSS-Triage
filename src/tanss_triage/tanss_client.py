@@ -12,6 +12,7 @@ Beschreibung: Dünner Client für die TANSS-REST-API (https://api-doc.tanss.de).
 Letzte Änderung: 2026-09-10
 """
 
+import json
 import logging
 import threading
 
@@ -184,14 +185,18 @@ class TanssClient:
         if not url:
             raise TanssApiError("Kein Download-Link für Dokument %d."
                                 % document_id)
+        return self._download_to_file(url, target_path)
+
+    def _download_to_file(self, url, target_path):
+        """Lädt eine (ggf. relative) URL mit apiToken-Header in eine Datei."""
         if url.startswith("/"):
             url = self.base_url + url
         response = self._session.get(url, headers={"apiToken": self._api_key},
                                      timeout=max(self.timeout, 120),
                                      stream=True)
         if response.status_code >= 400:
-            raise TanssApiError("Download von Dokument %d -> HTTP %d"
-                                % (document_id, response.status_code),
+            raise TanssApiError("Download %s -> HTTP %d"
+                                % (url, response.status_code),
                                 status=response.status_code)
         size = 0
         with open(target_path, "wb") as handle:
@@ -199,6 +204,42 @@ class TanssClient:
                 handle.write(chunk)
                 size += len(chunk)
         return size
+
+    # -- Mails
+
+    def get_mail(self, mail_id):
+        """Holt eine einzelne Mail samt Anhangsliste."""
+        return self._content(self._request(
+            "GET", "/api/v1/mails/%d" % mail_id)) or {}
+
+    def download_mail_attachment(self, mail_id, attachment, target_path):
+        """Lädt einen Mail-Anhang in eine Datei.
+
+        Die API-Doku lässt die Struktur der Anhangsobjekte offen - darum
+        werden die plausiblen Downloadwege der Reihe nach probiert: ein
+        direktes URL-Feld, sonst ein File-Pass-Schlüssel für
+        /api/v1/util/files/. Gibt es keinen, nennt der Fehler die komplette
+        Struktur, damit der fehlende Weg im Log sichtbar wird.
+        """
+        url = ""
+        for field in ("url", "downloadUrl", "downloadLink", "link", "href"):
+            value = attachment.get(field)
+            if isinstance(value, str) and value:
+                url = value
+                break
+        if not url:
+            for field in ("key", "filePass", "fileKey", "token"):
+                value = attachment.get(field)
+                if isinstance(value, str) and value:
+                    url = "/api/v1/util/files/" + value
+                    break
+        if not url:
+            raise TanssApiError(
+                "Kein Downloadweg für Anhang von Mail %d erkennbar - "
+                "Anhangsstruktur: %s"
+                % (mail_id,
+                   json.dumps(attachment, ensure_ascii=False)[:400]))
+        return self._download_to_file(url, target_path)
 
     # -- Identifikation und Stammdaten
 

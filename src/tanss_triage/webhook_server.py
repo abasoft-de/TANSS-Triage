@@ -52,15 +52,19 @@ class _Handler(BaseHTTPRequestHandler):
     expected_path = "/webhook"
 
     def do_POST(self):                                   # noqa: N802 (stdlib-API)
+        length = int(self.headers.get("Content-Length") or 0)
+        if length < 0 or length > MAX_BODY:
+            self._answer(400, "bad length")
+            return
+        # Body immer erst einlesen - eine Antwort vor dem Lesen lässt
+        # manche Clients mit einem Verbindungsabbruch statt des
+        # Statuscodes zurück.
+        body = self.rfile.read(length) if length else b""
         if self.path.rstrip("/") != self.expected_path:
             self._answer(404, "unknown path")
             return
-        length = int(self.headers.get("Content-Length") or 0)
-        if length <= 0 or length > MAX_BODY:
-            self._answer(400, "bad length")
-            return
         try:
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            payload = json.loads(body.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             self._answer(400, "bad json")
             return

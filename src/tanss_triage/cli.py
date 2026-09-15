@@ -24,6 +24,7 @@ import threading
 from . import __version__
 from .assigner import multi_company_checker
 from .config import load_config
+from .db import fetch_mail_attachments
 from .llm import build_llm
 from .logging_setup import setup_logging
 from .processor import Processor
@@ -52,6 +53,9 @@ def build_parser():
                       help="nur dieses Ticket verarbeiten und beenden")
     mode.add_argument("--identify", metavar="NUMMER",
                       help="Rufnummer auflösen und die rohe Antwort zeigen")
+    mode.add_argument("--mail", type=int, metavar="ID",
+                      help="Mail samt Anhängen zeigen (API und DB, zur "
+                           "Diagnose)")
     mode.add_argument("--register-webhook", metavar="URL",
                       help="Event-Regel mit WEBHOOK-Aktion in TANSS anlegen")
     mode.add_argument("--list-webhooks", action="store_true",
@@ -66,7 +70,9 @@ def build_processor(cfg, client):
         transcriber=Transcriber(cfg.whisper),
         llm=build_llm(cfg.llm),
         state=State(cfg.state.db_path),
-        is_multi_company=multi_company_checker(cfg.db))
+        is_multi_company=multi_company_checker(cfg.db),
+        mail_attachments_lookup=lambda mail_id: fetch_mail_attachments(
+            cfg.db, mail_id))
 
 
 def serve(cfg, client):
@@ -113,6 +119,19 @@ def main(argv=None):
     if arguments.identify:
         result = client.identify_phone_number(arguments.identify)
         print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+
+    if arguments.mail:
+        mail = client.get_mail(arguments.mail)
+        for field in ("body", "bodyHtml", "bodyPlain", "originalText"):
+            if isinstance(mail.get(field), str) and len(mail[field]) > 300:
+                mail[field] = mail[field][:300] + " ...[gekürzt]"
+        print("--- API (GET /api/v1/mails/%d) ---" % arguments.mail)
+        print(json.dumps(mail, indent=2, ensure_ascii=False))
+        print("\n--- DB (mails_attachments) ---")
+        rows = fetch_mail_attachments(cfg.db, arguments.mail)
+        print(json.dumps(rows, indent=2, ensure_ascii=False)
+              if rows is not None else "(DB nicht verfügbar)")
         return 0
 
     if arguments.list_webhooks:

@@ -68,6 +68,13 @@ defaults_file = "~/.my.cnf"
 host = "localhost"
 database = "tanss"
 
+[storage]
+# Ablage der Mail-Anhänge auf dem TANSS-Server. Starface hängt die Voicemail
+# an die MAIL (nicht ans Ticket); die Dateien liegen als
+# <verzeichnis>/<filenameDB> unter diesem Pfad und werden direkt gelesen.
+# Leer = nur den API-Weg versuchen.
+mail_attachments_dir = "~/app/storage/dokumente/attachments"
+
 [comment]
 # Transkript-Kommentare als "intern" anlegen (Kunden sehen sie nicht).
 internal = true

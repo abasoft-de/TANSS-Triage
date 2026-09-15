@@ -91,6 +91,18 @@ class DbConfig:
 
 
 @dataclass
+class StorageConfig:
+    # Ablage der Mail-Anhänge auf dem TANSS-Server; die Dateien heißen dort
+    # <verzeichnis>/<filenameDB> (aus mails_attachments). Leer = nicht vom
+    # Dateisystem lesen, nur über die API versuchen.
+    mail_attachments_dir: str = "~/app/storage/dokumente/attachments"
+
+    def resolved_dir(self):
+        return (os.path.expanduser(self.mail_attachments_dir)
+                if self.mail_attachments_dir else "")
+
+
+@dataclass
 class CommentConfig:
     internal: bool = True
 
@@ -124,6 +136,7 @@ class Config:
     starface: StarfaceConfig = field(default_factory=StarfaceConfig)
     assignment: AssignmentConfig = field(default_factory=AssignmentConfig)
     db: DbConfig = field(default_factory=DbConfig)
+    storage: StorageConfig = field(default_factory=StorageConfig)
     comment: CommentConfig = field(default_factory=CommentConfig)
     state: StateConfig = field(default_factory=StateConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -189,6 +202,7 @@ def load_config(config_path=None, env_path=None):
     _fill(cfg.starface, raw.get("starface"))
     _fill(cfg.assignment, raw.get("assignment"))
     _fill(cfg.db, raw.get("db"))
+    _fill(cfg.storage, raw.get("storage"))
     _fill(cfg.comment, raw.get("comment"))
     _fill(cfg.state, raw.get("state"))
     _fill(cfg.logging, raw.get("logging"))

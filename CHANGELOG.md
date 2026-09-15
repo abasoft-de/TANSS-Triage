@@ -5,6 +5,37 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.2.0] - 2026-09-15
+
+### Hinzugefügt
+
+- **Mail-Anhänge werden verarbeitet**: Starface hängt die Voicemail an die
+  eingehende Mail, nicht ans Ticket - `GET /tickets/{id}/documents` sah sie
+  daher nie (in der Datenbank liegt sie in `mails_attachments`, nicht in
+  `bug_files`). Audio wird jetzt aus zwei Quellen gesammelt: Ticket-Dokumente
+  und die Anhänge aller Mails der Ticket-Historie. Mail-Anhänge werden
+  bevorzugt direkt aus dem Storage des TANSS-Servers gelesen
+  (`[storage] mail_attachments_dir`, Default
+  `~/app/storage/dokumente/attachments`, Ablage
+  `<verzeichnis>/<filenameDB>`); ist die DB nicht verfügbar, wird die API
+  befragt (`GET /api/v1/mails/{id}`).
+- Diagnose-Kommando `--mail <id>`: zeigt eine Mail samt Anhängen aus API
+  und Datenbank.
+
+### Geändert
+
+- State-Schlüssel sind jetzt Texte (`doc:<id>` bzw. `mail:<id>:<datei>`),
+  weil Mail-Anhänge keine eigene numerische ID haben; eine vorhandene
+  State-DB wird beim Start automatisch migriert. Die Kommentar-Marker
+  tragen dieselben Schlüssel.
+- "Ticket hat keine Audio-Anhänge" wird jetzt auf INFO geloggt, damit ein
+  Lauf mit `--ticket` nicht mehr wortlos endet.
+
+### Behoben
+
+- Webhook-Server liest den Request-Body jetzt auch bei abgelehnten
+  Anfragen ein, statt Clients mit einem Verbindungsabbruch stehenzulassen.
+
 ## [0.1.3] - 2026-09-15
 
 ### Behoben

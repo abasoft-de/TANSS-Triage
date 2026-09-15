@@ -5,20 +5,25 @@ Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: processor.py
 Beschreibung: Verarbeitet ein einzelnes Ticket: Audio-Anhänge finden,
               herunterladen, mit Whisper transkribieren, Transkript als
-              Kommentar anlegen. Ist es ein Starface-Voicemail-Ticket, kommen
+              Kommentar anlegen. Audio kann an zwei Stellen hängen: als
+              Ticket-Dokument und - der Starface-Normalfall - als Anhang
+              der eingegangenen Mail (in der Datenbank mails_attachments,
+              nicht bug_files). Ist es ein Starface-Voicemail-Ticket, kommen
               Rufnummern-Zuordnung (Firma/Melder) und - falls ein LLM
               konfiguriert ist - Betreff und Beschreibung dazu. Der
               Überschreib-Schutz sorgt dafür, dass manuell angepasste
               Tickets nicht angefasst werden: der Betreff wird nur ersetzt,
               solange er noch generisch ist, die Beschreibung nur, solange
               die Starface-Boilerplate darin steht.
-Letzte Änderung: 2026-09-10
+Letzte Änderung: 2026-09-15
 """
 
 import logging
 import os
 import re
+import shutil
 import tempfile
+from dataclasses import dataclass
 
 from . import __version__
 from .assigner import Assignment, decide_assignment
@@ -29,9 +34,23 @@ LOG = logging.getLogger("tanss_triage.processor")
 MARKER_PREFIX = "[TANSS-Triage"
 
 
-def comment_marker(document_id):
+@dataclass
+class AudioSource:
+    """Eine transkribierbare Datei: woher sie kommt und wie man sie lädt."""
+    key: str            # eindeutig, z. B. "doc:55" oder "mail:356324:x.wav"
+    file_name: str
+    download: object    # callable(target_path) -> Größe in Bytes
+
+
+def comment_marker(item_key):
     """Marker im Kommentar; macht Verarbeitung auch ohne State-DB erkennbar."""
-    return "%s v%s | doc:%d]" % (MARKER_PREFIX, __version__, document_id)
+    return "%s v%s | %s]" % (MARKER_PREFIX, __version__, item_key)
+
+
+def is_audio_file(file_name, mime_type, extensions):
+    wanted = {extension.lower().lstrip(".") for extension in extensions}
+    extension = os.path.splitext(file_name or "")[1].lower().lstrip(".")
+    return extension in wanted or (mime_type or "").lower().startswith("audio")
 
 
 def find_audio_documents(documents, extensions):
@@ -41,15 +60,18 @@ def find_audio_documents(documents, extensions):
     hängt neben der WAV auch Inline-Bilder an (SF_M_IMG_0), die hier
     rausfallen.
     """
-    wanted = {extension.lower().lstrip(".") for extension in extensions}
-    hits = []
-    for document in documents or []:
-        name = (document.get("fileName") or "")
-        extension = os.path.splitext(name)[1].lower().lstrip(".")
-        mime = (document.get("mimeType") or "").lower()
-        if extension in wanted or mime.startswith("audio"):
-            hits.append(document)
-    return hits
+    return [document for document in documents or []
+            if is_audio_file(document.get("fileName"),
+                             document.get("mimeType"), extensions)]
+
+
+def mail_attachment_name(attachment):
+    """Dateiname eines Mail-Anhangs, tolerant gegen Feldnamens-Varianten."""
+    for field in ("filename", "fileName", "name"):
+        value = attachment.get(field)
+        if isinstance(value, str) and value:
+            return value
+    return ""
 
 
 def find_starface_mail(history, sender_patterns):
@@ -111,9 +133,9 @@ def should_replace_content(content, patterns):
     return any(pattern.lower() in haystack for pattern in patterns)
 
 
-def history_has_marker(history, document_id):
+def history_has_marker(history, item_key):
     """Safety-Net gegen verlorene State-DB: steht unser Marker schon im Ticket?"""
-    needle = "| doc:%d]" % document_id
+    needle = "| %s]" % item_key
     for comment in (history or {}).get("comments") or []:
         text = (comment.get("content") or "") + (comment.get("title") or "")
         if MARKER_PREFIX in text and needle in text:
@@ -130,53 +152,56 @@ class Processor:
     """Verdrahtet Client, Whisper, LLM und State für je ein Ticket."""
 
     def __init__(self, cfg, client, transcriber, llm, state,
-                 is_multi_company):
+                 is_multi_company, mail_attachments_lookup=None):
         self.cfg = cfg
         self.client = client
         self.transcriber = transcriber
         self.llm = llm
         self.state = state
         self.is_multi_company = is_multi_company
+        # mail_id -> Liste aus mails_attachments oder None (DB nicht da)
+        self.mail_attachments_lookup = (mail_attachments_lookup
+                                        or (lambda mail_id: None))
 
     # -- Hauptablauf
 
     def process_ticket(self, ticket_id):
         """Verarbeitet ein Ticket vollständig; unkritische Fehler landen im Log."""
-        documents = self.client.get_documents(ticket_id)
-        audio_documents = find_audio_documents(documents,
-                                               self.cfg.audio.extensions)
-        if not audio_documents:
-            LOG.debug("Ticket %d hat keine Audio-Anhänge.", ticket_id)
+        history = self.client.get_ticket_history(ticket_id)
+        sources = self._collect_audio_sources(ticket_id, history)
+        if not sources:
+            LOG.info("Ticket %d hat keine Audio-Anhänge (weder als Dokument "
+                     "noch an einer Mail).", ticket_id)
             return
 
-        history = self.client.get_ticket_history(ticket_id)
         starface_mail = find_starface_mail(history,
                                            self.cfg.starface.sender_patterns)
         caller_number, voicemail_box = extract_caller_info(starface_mail)
 
         transcripts = []
-        for document in audio_documents:
-            document_id = document.get("id")
-            if self.state.is_done(document_id):
-                LOG.debug("Dokument %s schon verarbeitet (State).", document_id)
+        for source in sources:
+            if self.state.is_done(source.key):
+                LOG.debug("%s schon verarbeitet (State).", source.key)
                 continue
-            if history_has_marker(history, document_id):
-                LOG.info("Dokument %s trägt schon einen Marker-Kommentar - "
-                         "wird nur im State nachgetragen.", document_id)
-                self.state.mark_done(document_id, ticket_id, "Marker gefunden")
+            if history_has_marker(history, source.key):
+                LOG.info("%s trägt schon einen Marker-Kommentar - wird nur "
+                         "im State nachgetragen.", source.key)
+                self.state.mark_done(source.key, ticket_id, "Marker gefunden")
                 continue
             try:
-                transcript = self._transcribe_document(ticket_id, document)
+                transcript = self._transcribe_source(ticket_id, source)
             except Exception as error:
-                retry = self.state.mark_failed(document_id, ticket_id,
+                retry = self.state.mark_failed(source.key, ticket_id,
                                                str(error))
-                LOG.exception("Dokument %s von Ticket %d fehlgeschlagen%s.",
-                              document_id, ticket_id,
+                LOG.exception("%s von Ticket %d fehlgeschlagen%s.",
+                              source.key, ticket_id,
                               "" if retry else " (endgültig aufgegeben)")
                 continue
-            transcripts.append((document, transcript))
+            transcripts.append((source, transcript))
 
         if not transcripts:
+            LOG.info("Ticket %d: nichts zu tun (alles schon verarbeitet "
+                     "oder fehlgeschlagen).", ticket_id)
             return
 
         # Zuordnung und LLM laufen einmal pro Ticket, nicht pro Datei.
@@ -209,9 +234,9 @@ class Processor:
         update, update_notes = self._build_update(ticket, bool(starface_mail),
                                                   assignment, triage_result)
 
-        for document, transcript in transcripts:
+        for source, transcript in transcripts:
             comment_title, comment_body = self._build_comment(
-                document, transcript, starface_mail, caller_number,
+                source, transcript, starface_mail, caller_number,
                 assignment, update_notes, ticket)
             if self.cfg.dry_run:
                 LOG.info("[dry-run] Kommentar an Ticket %d:\n%s\n%s",
@@ -220,11 +245,9 @@ class Processor:
                 self.client.post_comment(ticket_id, comment_title,
                                          comment_body,
                                          internal=self.cfg.comment.internal)
-                self.state.mark_done(document.get("id"), ticket_id,
-                                     "transkribiert")
+                self.state.mark_done(source.key, ticket_id, "transkribiert")
             LOG.info("Ticket %d: %s transkribiert (%s Audio).", ticket_id,
-                     document.get("fileName"),
-                     format_duration(transcript.duration))
+                     source.file_name, format_duration(transcript.duration))
 
         if update:
             if self.cfg.dry_run:
@@ -239,15 +262,96 @@ class Processor:
 
     # -- Teilschritte
 
-    def _transcribe_document(self, ticket_id, document):
-        """Lädt ein Dokument in ein Temp-Verzeichnis und transkribiert es."""
-        name = document.get("fileName") or ("dokument-%s" % document.get("id"))
+    def _collect_audio_sources(self, ticket_id, history):
+        """Sammelt alle Audio-Dateien eines Tickets.
+
+        Zwei Quellen: die Ticket-Dokumente und die Anhänge der Mails aus
+        der Historie - Starface hängt die WAV an die Mail, nicht ans
+        Ticket, darum reicht der Dokumente-Endpunkt allein nicht.
+        """
+        sources = []
+        for document in find_audio_documents(
+                self.client.get_documents(ticket_id),
+                self.cfg.audio.extensions):
+            sources.append(AudioSource(
+                key="doc:%d" % document.get("id"),
+                file_name=document.get("fileName") or "?",
+                download=lambda path, d=document: self.client.download_document(
+                    ticket_id, d.get("id"), path)))
+
+        for mail in (history or {}).get("mails") or []:
+            mail_id = mail.get("id")
+            if not mail_id:
+                continue
+            sources.extend(self._mail_audio_sources(ticket_id, mail_id))
+        return sources
+
+    def _mail_audio_sources(self, ticket_id, mail_id):
+        """Audio-Anhänge einer Mail.
+
+        Bevorzugt über die Datenbank (mails_attachments) plus direkten
+        Dateizugriff im Storage des TANSS-Servers - das ist der verlässliche
+        Weg, denn die Ablage ist <verzeichnis>/<filenameDB>. Nur wenn die
+        DB nicht verfügbar ist, wird die API befragt.
+        """
+        rows = self.mail_attachments_lookup(mail_id)
+        if rows is not None:
+            return self._sources_from_storage(mail_id, rows)
+
+        try:
+            detail = self.client.get_mail(mail_id)
+        except Exception as error:
+            LOG.warning("Mail %s von Ticket %d nicht ladbar: %s",
+                        mail_id, ticket_id, error)
+            return []
+        sources = []
+        for attachment in detail.get("attachments") or []:
+            name = mail_attachment_name(attachment)
+            mime = attachment.get("mimeType") or attachment.get("type")
+            if not is_audio_file(name, mime, self.cfg.audio.extensions):
+                continue
+            sources.append(AudioSource(
+                key="mail:%d:%s" % (mail_id, name),
+                file_name=name,
+                download=lambda path, m=mail_id, a=attachment:
+                    self.client.download_mail_attachment(m, a, path)))
+        return sources
+
+    def _sources_from_storage(self, mail_id, rows):
+        """Baut Audio-Quellen aus mails_attachments-Zeilen (Dateisystem)."""
+        storage_dir = self.cfg.storage.resolved_dir()
+        sources = []
+        for row in rows:
+            name = row.get("filename") or ""
+            if not is_audio_file(name, None, self.cfg.audio.extensions):
+                continue
+            stored = os.path.join(storage_dir, row.get("verzeichnis") or "",
+                                  row.get("filenameDB") or "")
+
+            def copy_from_storage(path, stored=stored):
+                if not storage_dir:
+                    raise RuntimeError("[storage] mail_attachments_dir ist "
+                                       "leer - kein Dateizugriff möglich.")
+                if not os.path.isfile(stored):
+                    raise FileNotFoundError(
+                        "Mail-Anhang nicht im Storage: %s" % stored)
+                shutil.copyfile(stored, path)
+                return os.path.getsize(path)
+
+            sources.append(AudioSource(
+                key="mail:%d:%s" % (mail_id, name),
+                file_name=name,
+                download=copy_from_storage))
+        return sources
+
+    def _transcribe_source(self, ticket_id, source):
+        """Lädt eine Audio-Quelle in ein Temp-Verzeichnis und transkribiert sie."""
         with tempfile.TemporaryDirectory(prefix="tanss-triage-") as directory:
-            path = os.path.join(directory, os.path.basename(name))
-            size = self.client.download_document(ticket_id,
-                                                 document.get("id"), path)
+            path = os.path.join(directory,
+                                os.path.basename(source.file_name or "audio"))
+            size = source.download(path)
             LOG.info("Ticket %d: %s heruntergeladen (%d Bytes), "
-                     "transkribiere ...", ticket_id, name, size)
+                     "transkribiere ...", ticket_id, source.file_name, size)
             return self.transcriber.transcribe(path)
 
     def _assign(self, caller_number):
@@ -306,12 +410,12 @@ class Processor:
 
         return (update, notes) if notes else (None, [])
 
-    def _build_comment(self, document, transcript, starface_mail,
+    def _build_comment(self, source, transcript, starface_mail,
                        caller_number, assignment, update_notes, ticket):
         """Formuliert den Ticket-Kommentar zu einer transkribierten Datei."""
-        title = "Transkript: %s" % (document.get("fileName") or "Sprachaufnahme")
-        lines = [comment_marker(document.get("id"))]
-        meta = ["Datei: %s" % (document.get("fileName") or "?"),
+        title = "Transkript: %s" % (source.file_name or "Sprachaufnahme")
+        lines = [comment_marker(source.key)]
+        meta = ["Datei: %s" % (source.file_name or "?"),
                 "Audio: %s min" % format_duration(transcript.duration)]
         if caller_number:
             meta.append("Anrufer: %s" % caller_number)

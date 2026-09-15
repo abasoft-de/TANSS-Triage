@@ -90,9 +90,11 @@ def test_overwrite_protection():
 
 def test_marker_detection():
     history = {"comments": [
-        {"title": "x", "content": comment_marker(77) + "\nTranskript ..."}]}
-    assert history_has_marker(history, 77)
-    assert not history_has_marker(history, 78)
+        {"title": "x",
+         "content": comment_marker("doc:77") + "\nTranskript ..."}]}
+    assert history_has_marker(history, "doc:77")
+    assert not history_has_marker(history, "doc:78")
+    assert not history_has_marker(history, "mail:77:x.wav")
 
 
 # -- Gesamtablauf mit Mocks --------------------------------------------------
@@ -133,6 +135,16 @@ class FakeClient:
     def get_company_employees(self, company_id):
         return [{"id": 7, "name": "Duft, Petra"}]
 
+    def get_mail(self, mail_id):
+        return self.mail_details.get(mail_id, {})
+
+    def download_mail_attachment(self, mail_id, attachment, path):
+        with open(path, "wb") as handle:
+            handle.write(b"RIFF")
+        return 4
+
+    mail_details = {}
+
 
 class FakeTranscriber:
     def transcribe(self, path):
@@ -153,11 +165,12 @@ def _config(tmp_path):
     return cfg
 
 
-def _processor(cfg, client, llm=None):
+def _processor(cfg, client, llm=None, mail_lookup=None):
     return Processor(cfg=cfg, client=client,
                      transcriber=FakeTranscriber(), llm=llm,
                      state=State(cfg.state.db_path),
-                     is_multi_company=lambda _id: False)
+                     is_multi_company=lambda _id: False,
+                     mail_attachments_lookup=mail_lookup)
 
 
 STARFACE_HISTORY = {"mails": [{
@@ -191,7 +204,7 @@ def test_starface_ticket_full_flow(tmp_path):
     _, title, body, internal = client.comments[0]
     assert "voicemail-2026-09-10_10-15.wav" in title
     assert "Frau Duft, das Fax geht nicht" in body
-    assert comment_marker(55) in body
+    assert comment_marker("doc:55") in body
     assert internal is True
 
     assert len(client.updates) == 1
@@ -255,19 +268,82 @@ def test_dry_run_writes_nothing(tmp_path):
     assert client.comments == []
     assert client.updates == []
     # dry-run merkt sich nichts - der scharfe Lauf soll später verarbeiten
-    assert not processor.state.is_done(55)
+    assert not processor.state.is_done("doc:55")
 
 
 def test_marker_in_ticket_prevents_duplicates(tmp_path):
     history = {"mails": STARFACE_HISTORY["mails"],
                "comments": [{"title": "Transkript",
-                             "content": comment_marker(55)}]}
+                             "content": comment_marker("doc:55")}]}
     client = FakeClient(AUDIO_DOCUMENTS, history, STARFACE_TICKET)
     processor = _processor(_config(tmp_path), client, llm=None)
     processor.process_ticket(4711)
 
     assert client.comments == []
-    assert processor.state.is_done(55)     # State nachgetragen
+    assert processor.state.is_done("doc:55")     # State nachgetragen
+
+
+MAIL_HISTORY = {"mails": [dict(STARFACE_HISTORY["mails"][0], id=356324)],
+                "comments": []}
+
+MAIL_ATTACHMENT_ROWS = [
+    {"filename": "SF_M_IMG_0", "filenameDB": "att_356324_SF_M_IMG_0",
+     "verzeichnis": "350000", "extension": ""},
+    {"filename": "voicemail-2026-09-15_08-00.wav",
+     "filenameDB": "att_356324_voicemail-2026-09-15_08-00.wav",
+     "verzeichnis": "350000", "extension": "wav"},
+]
+
+
+def test_mail_attachment_from_storage(tmp_path):
+    # Kein Ticket-Dokument - die WAV hängt an der Mail und liegt im Storage
+    storage = tmp_path / "storage" / "350000"
+    storage.mkdir(parents=True)
+    (storage / "att_356324_voicemail-2026-09-15_08-00.wav").write_bytes(
+        b"RIFF")
+
+    cfg = _config(tmp_path)
+    cfg.storage.mail_attachments_dir = str(tmp_path / "storage")
+    client = FakeClient([], MAIL_HISTORY, STARFACE_TICKET)
+    processor = _processor(cfg, client, llm=None,
+                           mail_lookup=lambda mid: MAIL_ATTACHMENT_ROWS)
+    processor.process_ticket(4711)
+
+    assert len(client.comments) == 1
+    _, title, body, _ = client.comments[0]
+    assert "voicemail-2026-09-15_08-00.wav" in title
+    assert comment_marker(
+        "mail:356324:voicemail-2026-09-15_08-00.wav") in body
+    assert processor.state.is_done(
+        "mail:356324:voicemail-2026-09-15_08-00.wav")
+
+
+def test_mail_attachment_api_fallback(tmp_path):
+    # DB nicht verfügbar (Lookup liefert None) -> Anhang über die API laden
+    client = FakeClient([], MAIL_HISTORY, STARFACE_TICKET)
+    client.mail_details = {356324: {"attachments": [
+        {"filename": "voicemail-2026-09-15_08-00.wav",
+         "url": "/api/v1/util/files/abc"}]}}
+    processor = _processor(_config(tmp_path), client, llm=None,
+                           mail_lookup=lambda mid: None)
+    processor.process_ticket(4711)
+
+    assert len(client.comments) == 1
+    assert comment_marker(
+        "mail:356324:voicemail-2026-09-15_08-00.wav") in client.comments[0][2]
+
+
+def test_missing_storage_file_is_recorded_as_failure(tmp_path):
+    cfg = _config(tmp_path)
+    cfg.storage.mail_attachments_dir = str(tmp_path / "storage")  # leer
+    client = FakeClient([], MAIL_HISTORY, STARFACE_TICKET)
+    processor = _processor(cfg, client, llm=None,
+                           mail_lookup=lambda mid: MAIL_ATTACHMENT_ROWS)
+    processor.process_ticket(4711)
+
+    assert client.comments == []
+    assert processor.state.attempts(
+        "mail:356324:voicemail-2026-09-15_08-00.wav") == 1
 
 
 def test_without_audio_nothing_happens(tmp_path):
