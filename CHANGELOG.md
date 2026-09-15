@@ -5,6 +5,15 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.3.2] - 2026-09-15
+
+### Geändert
+
+- Kommentar-Titel ist wieder "Transkript: <Dateiname>".
+- Der Idempotenz-Marker steht nicht mehr im Kommentar (Vorgabe). Gegen
+  Doppelverarbeitung schützt damit allein die State-DB; Marker aus
+  älteren Versionen werden in der Historie weiterhin erkannt.
+
 ## [0.3.1] - 2026-09-15
 
 ### Geändert

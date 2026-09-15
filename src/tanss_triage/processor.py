@@ -450,13 +450,16 @@ class Processor:
         return "Zuordnung: %s" % kubez
 
     def _build_comment(self, source, transcript, starface_mail, assignment):
-        """Formuliert den Ticket-Kommentar zu einer transkribierten Datei."""
-        title = "Automatisch erzeugtes Transkript"
+        """Formuliert den Ticket-Kommentar zu einer transkribierten Datei.
+
+        Bewusst ohne Marker (Vorgabe): gegen Doppelverarbeitung schützt
+        allein die State-DB; Marker aus älteren Versionen werden beim
+        Lesen der Historie weiterhin erkannt.
+        """
+        title = "Transkript: %s" % (source.file_name or "Sprachaufnahme")
         lines = []
         if starface_mail:
             lines.append(self._assignment_line(assignment))
             lines.append("")
         lines.append(transcript.text or "(keine Sprache erkannt)")
-        lines.append("")
-        lines.append(comment_marker(source.key))
         return title, "\n".join(lines)

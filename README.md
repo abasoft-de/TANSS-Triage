@@ -45,10 +45,11 @@ Für jedes gemeldete Ticket:
 Nicht-Starface-Tickets mit Audio-Anhang bekommen nur den
 Transkript-Kommentar; Betreff, Beschreibung und Zuordnung bleiben unberührt.
 
-Doppelte Verarbeitung wird zweifach verhindert: eine SQLite-State-Datei
-merkt sich verarbeitete Dokument-IDs, und jeder Kommentar trägt einen
-Marker `[TANSS-Triage vX.Y.Z | doc:<id>]`, der auch nach Verlust der
-State-Datei erkannt wird.
+Doppelte Verarbeitung verhindert die SQLite-State-Datei (`state.db`), die
+sich jede verarbeitete Audio-Quelle merkt - sie darf deshalb nicht
+gelöscht werden, sonst würden bereits kommentierte Tickets bei einem
+erneuten Anstoß noch einmal kommentiert. (Kommentar-Marker aus Versionen
+bis 0.3.1 werden in der Ticket-Historie weiterhin erkannt.)
 
 ## Einrichtung
 

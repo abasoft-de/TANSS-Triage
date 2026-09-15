@@ -12,9 +12,9 @@ Letzte Änderung: 2026-09-10
 
 from tanss_triage.config import Config
 from tanss_triage.processor import (
-    Processor, extract_caller_info, find_audio_documents, find_starface_mail,
-    history_has_marker, should_replace_content, should_replace_title,
-    comment_marker)
+    MARKER_PREFIX, Processor, extract_caller_info, find_audio_documents,
+    find_starface_mail, history_has_marker, should_replace_content,
+    should_replace_title, comment_marker)
 from tanss_triage.state import State
 from tanss_triage.transcriber import Transcript
 
@@ -220,9 +220,9 @@ def test_starface_ticket_full_flow(tmp_path):
 
     assert len(client.comments) == 1
     _, title, body, internal = client.comments[0]
-    assert title == "Automatisch erzeugtes Transkript"
+    assert title == "Transkript: voicemail-2026-09-10_10-15.wav"
     assert "Frau Duft, das Fax geht nicht" in body
-    assert comment_marker("doc:55") in body
+    assert MARKER_PREFIX not in body       # kein Marker mehr (Vorgabe)
     assert "Datei:" not in body
     # Ohne DB-Labels greifen die Fallbacks aus der identify-Antwort
     assert "Zuordnung: Firma 94 | Duft, Petra" in body
@@ -275,14 +275,13 @@ def test_comment_format_with_db_labels(tmp_path):
     processor.process_ticket(4711)
 
     _, title, body, _ = client.comments[0]
-    assert title == "Automatisch erzeugtes Transkript"
+    assert title == "Transkript: voicemail-2026-09-10_10-15.wav"
     lines = body.split("\n")
     assert lines[0] == ("Zuordnung: ABASTU | "
                         "Herr Dr. med. Sascha Orlik (Arzt)")
     assert lines[1] == ""
     assert lines[2].startswith("Hallo, hier Frau Duft")
-    assert lines[3] == ""
-    assert lines[4] == comment_marker("doc:55")
+    assert len(lines) == 3                 # kein Marker, keine Datei-Zeile
 
 
 def test_comment_company_only_shows_kubez(tmp_path):
@@ -377,9 +376,8 @@ def test_mail_attachment_from_storage(tmp_path):
 
     assert len(client.comments) == 1
     _, title, body, _ = client.comments[0]
-    assert title == "Automatisch erzeugtes Transkript"
-    assert comment_marker(
-        "mail:356324:voicemail-2026-09-15_08-00.wav") in body
+    assert title == "Transkript: voicemail-2026-09-15_08-00.wav"
+    assert "Frau Duft, das Fax geht nicht" in body
     assert processor.state.is_done(
         "mail:356324:voicemail-2026-09-15_08-00.wav")
 
@@ -395,8 +393,11 @@ def test_mail_attachment_api_fallback(tmp_path):
     processor.process_ticket(4711)
 
     assert len(client.comments) == 1
-    assert comment_marker(
-        "mail:356324:voicemail-2026-09-15_08-00.wav") in client.comments[0][2]
+    _, title, body, _ = client.comments[0]
+    assert title == "Transkript: voicemail-2026-09-15_08-00.wav"
+    assert "Frau Duft, das Fax geht nicht" in body
+    assert processor.state.is_done(
+        "mail:356324:voicemail-2026-09-15_08-00.wav")
 
 
 def test_missing_storage_file_is_recorded_as_failure(tmp_path):
