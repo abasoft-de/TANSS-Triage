@@ -72,6 +72,65 @@ def format_person(row):
     return label or None
 
 
+def max_mail_attachment_id(db_cfg):
+    """Höchste mailID in mails_attachments; None, wenn DB nicht verfügbar."""
+    rows = _query(db_cfg, "SELECT COALESCE(MAX(mailID), 0) AS m "
+                          "FROM mails_attachments", ())
+    return rows[0]["m"] if rows is not None else None
+
+
+def audio_mail_tickets(db_cfg, since_id, until_id, extensions):
+    """Tickets, an deren Mails im mailID-Fenster Audio-Anhänge hängen."""
+    if not extensions:
+        return []
+    placeholders = ", ".join(["%s"] * len(extensions))
+    return _query(db_cfg, """
+        SELECT DISTINCT bm.bugID AS ticket_id
+        FROM mails_attachments ma
+        JOIN bug_mails bm ON bm.mailID = ma.mailID
+        WHERE ma.mailID > %%s AND ma.mailID <= %%s
+          AND LOWER(ma.extension) IN (%s)
+        """ % placeholders,
+        (since_id, until_id, *[e.lower() for e in extensions]))
+
+
+def max_bug_file_id(db_cfg):
+    """Höchste ID in bug_files; None, wenn DB nicht verfügbar."""
+    rows = _query(db_cfg, "SELECT COALESCE(MAX(ID), 0) AS m FROM bug_files",
+                  ())
+    return rows[0]["m"] if rows is not None else None
+
+
+def bug_files_between(db_cfg, since_id, until_id):
+    """Neue Ticket-Dokumente im ID-Fenster (Audio-Filter macht der Aufrufer)."""
+    return _query(db_cfg, """
+        SELECT ID AS id, bugID AS ticket_id,
+               dateinameOrginal AS file_name, mimeType AS mime_type
+        FROM bug_files WHERE ID > %s AND ID <= %s
+        """, (since_id, until_id))
+
+
+def backlog_audio_tickets(db_cfg, lookback_minutes, extensions):
+    """Tickets mit Audio-Mail-Anhang aus den letzten n Minuten.
+
+    Nur für den allerersten Start (noch kein Cursor gespeichert), damit
+    kurz zuvor eingegangene Voicemails nicht durchrutschen.
+    """
+    if not extensions:
+        return []
+    placeholders = ", ".join(["%s"] * len(extensions))
+    return _query(db_cfg, """
+        SELECT DISTINCT bm.bugID AS ticket_id
+        FROM mails_attachments ma
+        JOIN bug_mails bm ON bm.mailID = ma.mailID
+        JOIN bug b ON b.ID = bm.bugID
+        WHERE LOWER(ma.extension) IN (%s)
+          AND b.erstelltDatum >= UNIX_TIMESTAMP() - %%s
+          AND COALESCE(b.geloescht, 0) = 0
+        """ % placeholders,
+        (*[e.lower() for e in extensions], int(lookback_minutes) * 60))
+
+
 def phone_number_roles(db_cfg, number, company_id):
     """Prüft, wie eine (nationale) Rufnummer in TANSS hinterlegt ist.
 

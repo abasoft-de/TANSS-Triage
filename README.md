@@ -12,10 +12,15 @@ Version: siehe [VERSION](VERSION) - Änderungen: [CHANGELOG.md](CHANGELOG.md)
 Das Starface-Telefoniesystem legt für Sprachnachrichten per E-Mail
 TANSS-Tickets an ("Sie haben eine Sprachnachricht von ... erhalten") mit der
 Aufnahme als WAV-Anhang. TANSS-Triage läuft dauerhaft auf dem TANSS-Server
-und wird **ausschließlich per Webhook** (TANSS-Event-Regeln) über neue
-Tickets benachrichtigt - es pollt nicht.
+und **pollt die TANSS-Datenbank** im konfigurierbaren Intervall (Default
+jede Minute) nach neuen Sprachaufnahmen: neue Mail-Anhänge
+(`mails_attachments`, erfasst auch Voicemails an bestehende Tickets) und
+neue Ticket-Dokumente (`bug_files`), jeweils über einen persistierten
+ID-Cursor - ein Neustart holt verpasste Zeit dadurch automatisch nach.
+(Die TANSS-Webhook-Regeln waren für diesen Anwendungsfall zu
+eingeschränkt und wurden in 0.5.0 durch das Polling ersetzt.)
 
-Für jedes gemeldete Ticket:
+Für jedes gefundene Ticket:
 
 1. **Alle Tickets mit Audio-Anhang** (wav, mp3, m4a, ogg, opus, flac, aac,
    wma): Anhang holen, mit faster-whisper (Default `large-v3`, CPU/int8)
@@ -95,20 +100,7 @@ cp config.example.toml config.toml   # Verhalten anpassen (optional)
 Beim ersten Lauf lädt faster-whisper das Modell (`large-v3` ~= 3 GB) in den
 Hugging-Face-Cache (`download_root` in der config.toml verlegt ihn).
 
-### 3. Webhook in TANSS anlegen
-
-```bash
-.venv/bin/python -m tanss_triage --register-webhook "http://127.0.0.1:8763/webhook"
-```
-
-(bzw. `.../webhook/<secret>`, wenn in der config.toml ein Secret gesetzt
-ist). Danach in der TANSS-Oberfläche prüfen, dass die Regel bei
-**Ticket erstellt** bzw. **E-Mail empfangen** feuert; `--list-webhooks`
-zeigt die vorhandenen Regeln. Scheitert die Anlage per API an Rechten,
-die Regel manuell in TANSS anlegen (Aktion: WebHook, URL wie oben,
-Methode POST).
-
-### 4. Dienst (Linux, systemd)
+### 3. Dienst (Linux, systemd)
 
 ```bash
 sudo cp deploy/tanss-triage.service /etc/systemd/system/
@@ -124,24 +116,21 @@ Ausrollen von der Windows-Entwicklung aus: `.\deploy.ps1 -Server <host>`
 ## Bedienung
 
 ```bash
-python -m tanss_triage                     # Dauerbetrieb: Webhook-Server + Worker
+python -m tanss_triage                     # Dauerbetrieb: Polling + Worker
 python -m tanss_triage --ticket 250312 --dry-run   # ein Ticket testweise (schreibt nichts)
 python -m tanss_triage --ticket 250312    # ein Ticket scharf nachziehen
 python -m tanss_triage --identify 07432994360      # Rufnummernauflösung ansehen
 python -m tanss_triage --mail 356324       # Mail samt Anhängen zeigen (Diagnose)
-python -m tanss_triage --list-webhooks    # Event-Regeln anzeigen
 ```
-
-`GET http://127.0.0.1:8763/health` antwortet mit Name und Version
-(für Monitoring).
 
 **Empfohlener Ersttest** auf dem Server: ein bekanntes Voicemail-Ticket mit
 `--ticket <id> --dry-run` durchspielen und das geplante Ergebnis im Log
 ansehen, dann ohne `--dry-run` scharf schalten.
 
-Da bewusst nicht gepollt wird, werden Tickets aus einer Downtime nicht
-automatisch nachgeholt - einzelne Tickets lassen sich mit `--ticket <id>`
-nachziehen.
+Downtime holt der Dienst selbst nach: die Poll-Cursor stehen in der
+State-DB, nach einem Neustart wird ab dem letzten Stand weitergemacht.
+Nur beim allerersten Start (ohne State-DB) greift stattdessen der
+konfigurierte Rückblick (`initial_lookback_minutes`).
 
 ## Entwicklung
 
@@ -149,8 +138,9 @@ nachziehen.
 .venv/bin/python -m pytest        # Tests, ohne Netz und ohne Modelle
 ```
 
-Struktur: `webhook_server.py` nimmt Events an und füllt eine Queue,
-`worker.py` arbeitet sie sequenziell ab (Whisper lastet die CPU allein aus),
+Struktur: `poller.py` fragt die Datenbank nach neuen Sprachaufnahmen und
+füllt eine Queue, `worker.py` arbeitet sie sequenziell ab (Whisper lastet
+die CPU allein aus),
 `processor.py` orchestriert pro Ticket, `tanss_client.py` kapselt die
 REST-API (Login-Eigenheiten: Header `apiToken`, 2-Minuten-Idle-Timeout,
 automatischer Re-Login), `assigner.py` enthält die Zuordnungsregeln,

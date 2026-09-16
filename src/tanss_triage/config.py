@@ -28,10 +28,10 @@ from . import BASE_DIR
 
 
 @dataclass
-class WebhookConfig:
-    listen_host: str = "127.0.0.1"
-    listen_port: int = 8763
-    secret: str = ""
+class PollingConfig:
+    interval_seconds: int = 60
+    # Rückblick beim allerersten Start (noch kein Cursor gespeichert).
+    initial_lookback_minutes: int = 60
 
 
 @dataclass
@@ -129,7 +129,7 @@ class TanssConfig:
 @dataclass
 class Config:
     tanss: TanssConfig = field(default_factory=TanssConfig)
-    webhook: WebhookConfig = field(default_factory=WebhookConfig)
+    polling: PollingConfig = field(default_factory=PollingConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
@@ -161,9 +161,9 @@ class Config:
         if provider == "openai_compatible" and not self.llm.base_url:
             problems.append("[llm] provider = openai_compatible braucht eine "
                             "base_url (z. B. http://localhost:11434/v1).")
-        if not (1 <= self.webhook.listen_port <= 65535):
-            problems.append("[webhook] listen_port muss zwischen 1 und 65535 "
-                            "liegen, nicht %r." % self.webhook.listen_port)
+        if self.polling.interval_seconds < 5:
+            problems.append("[polling] interval_seconds muss mindestens 5 "
+                            "sein, nicht %r." % self.polling.interval_seconds)
         return problems
 
 
@@ -195,7 +195,7 @@ def load_config(config_path=None, env_path=None):
             raw = tomllib.load(handle)
 
     cfg = Config()
-    _fill(cfg.webhook, raw.get("webhook"))
+    _fill(cfg.polling, raw.get("polling"))
     _fill(cfg.audio, raw.get("audio"))
     _fill(cfg.whisper, raw.get("whisper"))
     _fill(cfg.llm, raw.get("llm"))

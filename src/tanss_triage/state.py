@@ -36,6 +36,11 @@ class State:
                 attempts     INTEGER NOT NULL DEFAULT 0,
                 detail       TEXT
             )""")
+        self._connection.execute("""
+            CREATE TABLE IF NOT EXISTS cursors (
+                name  TEXT PRIMARY KEY,
+                value INTEGER NOT NULL
+            )""")
         self._migrate_legacy()
         self._connection.commit()
 
@@ -106,6 +111,23 @@ class State:
                     detail = excluded.detail
                 """, (str(item_key), ticket_id, int(time.time()), status,
                       detail[:500]))
+            self._connection.commit()
+
+    # -- Polling-Cursor (z. B. hoechste gesehene mailID)
+
+    def get_cursor(self, name):
+        """Gespeicherter Cursor oder None (= allererster Lauf)."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT value FROM cursors WHERE name = ?", (name,)).fetchone()
+        return row[0] if row else None
+
+    def set_cursor(self, name, value):
+        with self._lock:
+            self._connection.execute("""
+                INSERT INTO cursors (name, value) VALUES (?, ?)
+                ON CONFLICT(name) DO UPDATE SET value = excluded.value
+                """, (name, int(value)))
             self._connection.commit()
 
     def close(self):

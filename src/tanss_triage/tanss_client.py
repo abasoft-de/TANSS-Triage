@@ -252,21 +252,3 @@ class TanssClient:
     def get_company_employees(self, company_id):
         return self._content(self._request(
             "GET", "/api/v1/companies/%d/employees" % company_id)) or []
-
-    # -- Event-Regeln (Webhooks)
-
-    def list_event_rules(self):
-        """Alle Event-Regeln (Filter leer = alles, was der Nutzer sehen darf)."""
-        return self._content(self._request(
-            "PUT", "/api/v1/tanssEvents/rules",
-            json_body={"linkIds": []})) or []
-
-    def create_event_rule(self, name, url, method="POST"):
-        return self._content(self._request(
-            "POST", "/api/v1/tanssEvents/rules",
-            json_body={
-                "name": name,
-                "active": True,
-                "actions": [{"actionType": "WEBHOOK",
-                             "params": {"url": url, "method": method}}],
-            }))

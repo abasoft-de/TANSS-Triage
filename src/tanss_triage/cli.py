@@ -1,17 +1,18 @@
 """
-Usage: python -m tanss_triage                        # Webhook-Server (Betrieb)
+Usage: python -m tanss_triage                        # Dauerbetrieb (Polling)
        python -m tanss_triage --ticket 250312 --dry-run
        python -m tanss_triage --identify 07432994360
-       python -m tanss_triage --register-webhook http://127.0.0.1:8763/webhook
-       python -m tanss_triage --list-webhooks
+       python -m tanss_triage --mail 356324
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: cli.py
 Beschreibung: Kommandozeile von TANSS-Triage. Ohne Optionen startet der
-              Dauerbetrieb: Webhook-Server plus Worker, sauberes Ende bei
+              Dauerbetrieb: ein Poller fragt die TANSS-Datenbank im
+              konfigurierten Intervall nach neuen Sprachaufnahmen und ein
+              Worker arbeitet sie sequenziell ab; sauberes Ende bei
               SIGTERM/SIGINT (systemd). Die übrigen Kommandos sind
-              Einzelläufe für Test, Diagnose und Einrichtung.
-Letzte Änderung: 2026-09-10
+              Einzelläufe für Test und Diagnose.
+Letzte Änderung: 2026-09-16
 """
 
 import argparse
@@ -28,11 +29,11 @@ from .db import (fetch_assignment_labels, fetch_mail_attachments,
                  phone_number_roles)
 from .llm import build_llm
 from .logging_setup import setup_logging
+from .poller import Poller
 from .processor import Processor
 from .state import State
 from .tanss_client import TanssClient
 from .transcriber import Transcriber
-from .webhook_server import start_webhook_server
 from .worker import Worker, new_queue
 
 LOG = logging.getLogger("tanss_triage.cli")
@@ -57,20 +58,16 @@ def build_parser():
     mode.add_argument("--mail", type=int, metavar="ID",
                       help="Mail samt Anhängen zeigen (API und DB, zur "
                            "Diagnose)")
-    mode.add_argument("--register-webhook", metavar="URL",
-                      help="Event-Regel mit WEBHOOK-Aktion in TANSS anlegen")
-    mode.add_argument("--list-webhooks", action="store_true",
-                      help="vorhandene Event-Regeln anzeigen")
     return parser
 
 
-def build_processor(cfg, client):
+def build_processor(cfg, client, state):
     return Processor(
         cfg=cfg,
         client=client,
         transcriber=Transcriber(cfg.whisper),
         llm=build_llm(cfg.llm),
-        state=State(cfg.state.db_path),
+        state=state,
         is_multi_company=multi_company_checker(cfg.db),
         mail_attachments_lookup=lambda mail_id: fetch_mail_attachments(
             cfg.db, mail_id),
@@ -81,11 +78,12 @@ def build_processor(cfg, client):
 
 
 def serve(cfg, client):
-    """Dauerbetrieb: Webhook-Server + Worker, Ende per Signal."""
+    """Dauerbetrieb: Poll-Schleife + Worker, Ende per Signal."""
+    state = State(cfg.state.db_path)
     work_queue = new_queue()
-    worker = Worker(work_queue, build_processor(cfg, client))
+    worker = Worker(work_queue, build_processor(cfg, client, state))
     worker.start()
-    server = start_webhook_server(cfg.webhook, work_queue)
+    poller = Poller(cfg, state, work_queue.put)
 
     stop_event = threading.Event()
 
@@ -96,12 +94,18 @@ def serve(cfg, client):
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
-    LOG.info("tanss-triage %s bereit (LLM: %s, Whisper: %s%s).",
-             __version__, cfg.llm.resolved_provider(), cfg.whisper.model,
+    LOG.info("tanss-triage %s bereit (Polling alle %ds, LLM: %s, "
+             "Whisper: %s%s).", __version__, cfg.polling.interval_seconds,
+             cfg.llm.resolved_provider(), cfg.whisper.model,
              ", dry-run" if cfg.dry_run else "")
-    stop_event.wait()
+    while not stop_event.is_set():
+        try:
+            poller.tick()
+        except Exception:
+            LOG.exception("Poll-Zyklus fehlgeschlagen - nächster Versuch "
+                          "im Intervall.")
+        stop_event.wait(cfg.polling.interval_seconds)
 
-    server.shutdown()
     worker.stop()
     return 0
 
@@ -139,24 +143,9 @@ def main(argv=None):
               if rows is not None else "(DB nicht verfügbar)")
         return 0
 
-    if arguments.list_webhooks:
-        for rule in client.list_event_rules():
-            print(json.dumps(rule, indent=2, ensure_ascii=False))
-        return 0
-
-    if arguments.register_webhook:
-        rule = client.create_event_rule(
-            "TANSS-Triage Voicemail-Transkription",
-            arguments.register_webhook)
-        print("Regel angelegt:")
-        print(json.dumps(rule, indent=2, ensure_ascii=False))
-        print("\nWichtig: In der TANSS-Oberfläche prüfen, dass die Regel "
-              "auf die Trigger TICKET_CREATED bzw. TICKET_EMAIL_RECEIVED "
-              "reagiert.")
-        return 0
-
     if arguments.ticket:
-        build_processor(cfg, client).process_ticket(arguments.ticket)
+        state = State(cfg.state.db_path)
+        build_processor(cfg, client, state).process_ticket(arguments.ticket)
         return 0
 
     return serve(cfg, client)

@@ -5,15 +5,13 @@
 # Jeder Wert hier zeigt den eingebauten Default - wer nichts ändern will,
 # kann den Eintrag auch weglassen.
 
-[webhook]
-# Wohin TANSS die Event-Webhooks schickt. Das Programm läuft auf dem
-# TANSS-Server selbst, darum genügt localhost.
-listen_host = "127.0.0.1"
-listen_port = 8763
-# Shared Secret als Pfadbestandteil der Webhook-URL, weil TANSS-Webhooks
-# keine Signatur mitschicken: http://127.0.0.1:8763/webhook/<secret>
-# Leer = kein Secret (URL ist dann /webhook).
-secret = ""
+[polling]
+# Wie oft die TANSS-Datenbank nach neuen Sprachaufnahmen gefragt wird
+# (neue Mail-Anhänge und Ticket-Dokumente, über persistierte ID-Cursor -
+# ein Neustart holt verpasste Zeit automatisch nach).
+interval_seconds = 60
+# Rückblick beim allerersten Start, wenn noch kein Cursor gespeichert ist.
+initial_lookback_minutes = 60
 
 [audio]
 # Dateiendungen, die als Sprachaufnahme gelten (zusätzlich zählt jeder

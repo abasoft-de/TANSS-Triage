@@ -5,6 +5,25 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.5.0] - 2026-09-16
+
+### Geändert
+
+- **Webhook durch Polling ersetzt**: Die TANSS-Event-Regeln sind für
+  diesen Anwendungsfall zu eingeschränkt (Trigger per API nicht setzbar,
+  Regel feuerte nicht). Der Dienst pollt jetzt die TANSS-Datenbank im
+  konfigurierbaren Intervall (`[polling] interval_seconds`, Default 60)
+  nach neuen Sprachaufnahmen: neue Mail-Anhänge (`mails_attachments`) und
+  neue Ticket-Dokumente (`bug_files`), jeweils über einen in der State-DB
+  persistierten ID-Cursor. Ein Neustart holt verpasste Zeit dadurch
+  automatisch nach; beim allerersten Start greift
+  `initial_lookback_minutes` (Default 60).
+
+### Entfernt
+
+- Webhook-Server, `[webhook]`-Konfiguration sowie die CLI-Kommandos
+  `--register-webhook` und `--list-webhooks`.
+
 ## [0.4.1] - 2026-09-15
 
 ### Geändert

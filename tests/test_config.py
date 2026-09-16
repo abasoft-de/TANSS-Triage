@@ -31,7 +31,7 @@ def test_defaults_without_files(tmp_path, monkeypatch):
     _clean_env(monkeypatch)
     cfg = load_config(config_path=str(tmp_path / "gibtsnicht.toml"),
                       env_path=str(tmp_path / "gibtsnicht.env"))
-    assert cfg.webhook.listen_port == 8763
+    assert cfg.polling.interval_seconds == 60
     assert cfg.whisper.model == "large-v3"
     assert "wav" in cfg.audio.extensions
     assert cfg.llm.resolved_provider() == "none"      # kein Key gesetzt
@@ -43,9 +43,9 @@ def test_reads_toml_and_env(tmp_path, monkeypatch):
     _clean_env(monkeypatch)
     toml = tmp_path / "config.toml"
     toml.write_text("""
-[webhook]
-listen_port = 9999
-secret = "geheim"
+[polling]
+interval_seconds = 120
+initial_lookback_minutes = 15
 
 [whisper]
 model = "small"
@@ -59,8 +59,8 @@ base_url = "http://localhost:11434/v1"
                    "LLM_API_KEY=lokal\n", encoding="utf-8")
 
     cfg = load_config(config_path=str(toml), env_path=str(env))
-    assert cfg.webhook.listen_port == 9999
-    assert cfg.webhook.secret == "geheim"
+    assert cfg.polling.interval_seconds == 120
+    assert cfg.polling.initial_lookback_minutes == 15
     assert cfg.whisper.model == "small"
     assert cfg.llm.resolved_provider() == "openai_compatible"
     assert cfg.llm.api_key == "lokal"
@@ -81,8 +81,8 @@ def test_anthropic_auto_selection(tmp_path, monkeypatch):
 def test_unknown_toml_keys_are_ignored(tmp_path, monkeypatch):
     _clean_env(monkeypatch)
     toml = tmp_path / "config.toml"
-    toml.write_text("[webhook]\nlisten_port = 8000\nneuer_schalter = true\n",
-                    encoding="utf-8")
+    toml.write_text("[polling]\ninterval_seconds = 30\n"
+                    "neuer_schalter = true\n", encoding="utf-8")
     cfg = load_config(config_path=str(toml),
                       env_path=str(tmp_path / "x.env"))
-    assert cfg.webhook.listen_port == 8000
+    assert cfg.polling.interval_seconds == 30
