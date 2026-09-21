@@ -5,6 +5,69 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.6.1] - 2026-09-21
+
+### Behoben
+
+- **Betreffänderung galt als Fehler, obwohl sie ankam**: Ändert das PUT
+  auf `/api/v1/tickets/{id}` den Betreff, antwortet TANSS mit
+  `HTTP 400 RUNTIME_EXCEPTION` - die Änderung wird aber gespeichert
+  (Betreff, Text, Firma, Melder stehen im Ticket, die Historie
+  protokolliert sie). Seit 0.6.0 setzt der Dienst den Betreff, damit lief
+  jedes Voicemail-Ticket in einen ERROR samt Traceback, obwohl die Arbeit
+  getan war (Tickets 254701 und 254708 am 21.09.2026). Nach einem
+  fehlgeschlagenen Update wird das Ticket jetzt erneut gelesen: stimmen
+  Betreff, Text, Firma und Melder, bleibt im Log nur die gewohnte
+  Erfolgsmeldung "Ticket <id> aktualisiert (...)" - die irreführende
+  Fehlermeldung wird zurückgehalten (sie steht auf DEBUG, falls sie doch
+  einmal gebraucht wird). Fehlt etwas, bleibt es ein Fehler mit Traceback.
+  Die Ursache liegt in TANSS - dort mit der traceId aus der Antwort zu
+  klären.
+
+## [0.6.0] - 2026-09-21
+
+### Geändert
+
+- **Betreff im Stil der Hotline**: Die LLM-Anweisung für den Ticketbetreff
+  ist aus den bestehenden HLE-/HLT-Betreffen abgeleitet (Stichprobe: 8.890
+  Betreffe aus 2026, darunter 1.227 Voicemail-Tickets, deren Starface-
+  Betreff eine Kollegin ersetzt hat). Verlangt werden jetzt Telegrammstil
+  ohne Floskeln und Satzpunkt (Ziel 30-90 Zeichen), die Hausabkürzungen
+  (EVA, KIM, ePA, eRP, KT, HZV, PAL, RR ... - 36 % dieser Betreffe enden
+  auf einen RR-Hinweis, nur 0,9 % schreiben "Rückruf" aus), höchstens drei
+  Anliegen mit " + " verbunden, Zusätze mit " -> " angehängt sowie ein
+  Rückrufhinweis mit der im Gespräch genannten Nummer und Uhrzeit.
+- Der Nachname des Anrufers darf im Rückrufteil stehen ("... -> RR Frau
+  Meier 07141 141210"), nicht am Betreffanfang - 17 % der von Hand
+  vergebenen Betreffe nennen die Person, weil bei einer Sammelnummer sonst
+  unklar ist, wen man zurückruft. Praxis- und Firmennamen bleiben draußen
+  (die Firma hängt am Ticket), und die übermittelte Anrufernummer gehört
+  ausdrücklich nicht in den Betreff - nur eine, die der Anrufer nennt.
+- Sprachnachrichten ohne Inhalt (Piepton gehört, aufgelegt) bekommen ohne
+  LLM-Aufruf den Betreff "Sprachnachricht ohne Inhalt" - so heißen solche
+  Tickets auch von Hand.
+
+- **Klartext statt IDs im Log**: Die Meldung nach einem Ticket-Update nennt
+  jetzt die KUBEZ der Firma und den Namen des Melders ("Firma RAUMAR,
+  Melder Hr. Dr. med. Sascha Orlik") statt der Datensatz-IDs; ohne
+  Datenbank bleibt es bei "Firma #2249". Das gilt auch für die
+  Dry-run-Ausgabe (die zusätzlich den geplanten Betreff zeigt), die Warnung
+  über eine nicht ladbare Ansprechpartnerliste und die Begründung
+  "<Name> arbeitet in mehreren Firmen", die im Kommentar landet.
+
+### Hinzugefügt
+
+- `[llm] subject_abbreviations_extra` in der config.toml: ergänzt die
+  eingebaute Abkürzungsliste (ersetzt sie nicht), damit neue Kürzel ohne
+  Deployment dazukommen.
+
+### Behoben
+
+- Ein zu langer LLM-Betreff wurde bei 200 Zeichen gekappt und ungeprüft
+  geschrieben, obwohl `bug.ueberschrift` ein `varchar(100)` ist. Gekürzt
+  wird jetzt auf 100 Zeichen an der Wortgrenze (mit Auslassungszeichen);
+  Zeilenumbrüche im Betreff fallen weg.
+
 ## [0.5.0] - 2026-09-16
 
 ### Geändert

@@ -57,6 +57,9 @@ class LlmConfig:
     max_tokens: int = 1500
     timeout: float = 120.0
     api_key: str = ""             # kommt aus der Umgebung, nicht aus dem TOML
+    # Zusätzliche Hausabkürzungen für den Betreff; sie ergänzen die
+    # eingebaute Liste (triage.DEFAULT_ABBREVIATIONS), ersetzen sie nicht.
+    subject_abbreviations_extra: list = field(default_factory=list)
 
     def resolved_provider(self):
         """Automatik auflösen: expliziter Wert gewinnt, sonst nach Key."""

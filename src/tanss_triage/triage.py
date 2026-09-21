@@ -5,12 +5,15 @@ Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: triage.py
 Beschreibung: Baut aus dem Transkript einer Sprachnachricht per LLM einen
               ordentlichen Ticketbetreff und eine strukturierte Beschreibung.
+              Der Betreff folgt dem Stil, in dem die Hotline ihre Tickets
+              benennt (Telegrammstil, Hausabkürzungen, Rückrufhinweis) -
+              abgeleitet aus den bestehenden HLE-/HLT-Betreffen.
               Bekommt das LLM zusätzlich die Ansprechpartnerliste der schon
               identifizierten Firma, darf es den Melder vorschlagen (nur IDs
               aus der Liste werden akzeptiert). Die Antwort ist striktes JSON;
               was nicht parsebar ist, führt zu "kein Update" statt zu einem
               kaputten Ticket.
-Letzte Änderung: 2026-09-10
+Letzte Änderung: 2026-09-21
 """
 
 import json
@@ -22,7 +25,31 @@ from .llm import LlmError
 
 LOG = logging.getLogger("tanss_triage.triage")
 
-SYSTEM_PROMPT = """\
+# Harte Grenze: bug.ueberschrift ist varchar(100). Kein einziger der
+# bestehenden HLE-/HLT-Betreffe ist länger, der Schnitt liegt bei 55 Zeichen.
+MAX_SUBJECT_LENGTH = 100
+
+# Betreff und Beschreibung, wenn nichts gesprochen wurde (Piepton, aufgelegt).
+# So benennen die Kolleg*innen solche Tickets auch von Hand.
+EMPTY_TRANSCRIPT_SUBJECT = "Sprachnachricht ohne Inhalt"
+EMPTY_TRANSCRIPT_CONTENT = ("Sprachnachricht ohne verständlichen Inhalt - "
+                            "es wurde nichts gesprochen.")
+
+# Hausabkürzungen für den Betreff: Whisper schreibt aus, was gesprochen wird
+# ("die Kartenlesegeräte lesen keine Gesundheitskarten"), die Hotline notiert
+# kurz ("KT liest keine eGKs"). Die Liste wächst mit der Zeit (eAU, ePA und
+# Hybrid-DRG kamen alle erst dazu) - ergänzen lässt sie sich über
+# [llm] subject_abbreviations_extra in der config.toml, ohne Deployment.
+DEFAULT_ABBREVIATIONS = [
+    "EVA", "EVABOX", "KIM", "ePA", "eRP", "eAU", "eGK", "KVK",
+    "KT (Kartenterminal)", "KL (Kartenleser)", "SMC-KT", "HBA", "TI",
+    "AP (Arbeitsplatz)", "HO (Homeoffice)", "HZV", "PAL", "PSÄ",
+    "RE (Rechnung)", "DaSi (Datensicherung)",
+    "MDB (Medikamentendatenbank)", "OT (Online-Terminkalender)",
+    "FiBu", "GOÄ", "LANR", "ÜW (Überweisung)", "RR (Rückruf)",
+]
+
+SYSTEM_PROMPT_TEMPLATE = """\
 Du bereitest Voicemail-Tickets in einem IT-Ticketsystem (TANSS) auf. Die
 Anrufer sind Kunden eines IT-Systemhauses für Arztpraxen (Software EVA).
 Du bekommst das automatische Transkript einer Sprachnachricht (Whisper,
@@ -33,10 +60,33 @@ Antworte AUSSCHLIESSLICH mit einem JSON-Objekt, ohne Erklärtext davor oder
 danach, mit genau diesen Feldern:
 
 {
-  "betreff": "prägnanter Ticketbetreff, max. 80 Zeichen, deutsch. Beschreibe nur das Anliegen - keine Anrufernamen, keine Praxisnamen, keine Floskeln wie 'Sprachnachricht von'.",
-  "beschreibung": "strukturierte Zusammenfassung: 1-3 Sätze Anliegen, danach falls vorhanden Zeilen wie 'Anrufer: ...', 'Rückruf unter: ...', 'Dringlichkeit: ...'. Nur Informationen aus Transkript/Metadaten, nichts erfinden.",
+  "betreff": "Ticketbetreff nach den Betreff-Regeln unten",
+  "beschreibung": "strukturierte Zusammenfassung: 1-3 Sätze Anliegen, danach falls vorhanden Zeilen wie 'Anrufer: ...', 'Rückruf unter: ...', 'Dringlichkeit: ...'. Der Name des Anrufers gehört hierher, auch wenn er im Betreff entfällt. Nur Informationen aus Transkript/Metadaten, nichts erfinden.",
   "melder_id": null
 }
+
+Betreff-Regeln - so benennt die Hotline ihre Tickets:
+
+- Telegrammstil ohne Einleitung, Ziel 30 bis 90 Zeichen, nie mehr als 100.
+  Gegenstand plus Problem oder Infinitiv: "KIM und ePA gehen nicht",
+  "Nadeldrucker druckt nicht", "Ziffer 86901 freischalten".
+- Kein Satzpunkt, keine Floskeln ("Sprachnachricht von", "Anruf wegen"),
+  keine Praxis- oder Firmennamen - die Firma hängt am Ticket.
+- Nutze die Hausabkürzungen, auch wenn das Transkript sie ausspricht:
+  %s.
+  Fachbegriffe, die du nicht sicher zuordnest, lässt du so stehen, wie sie
+  im Transkript fallen.
+- Höchstens drei Anliegen, verbunden mit " + ". Einen Zusatzhinweis hängst
+  du mit " -> " an.
+- Bittet der Anrufer um Rückruf, endet der Betreff mit "RR" - samt der
+  Nummer und dem Zeitfenster, die er nennt:
+  "... -> RR 07141 141210 ab 14 Uhr". Die übermittelte Anrufernummer aus
+  den Metadaten gehört NICHT in den Betreff, nur eine im Gespräch genannte.
+- Den Nachnamen des Anrufers nur im Rückrufteil nennen
+  ("... -> RR Frau Meier 07141 141210"), nie am Betreffanfang.
+- Dringlichkeit nur übernehmen, wenn der Anrufer sie ausspricht
+  ("dringend", "Praxis steht still").
+- Wurde nichts gesagt, lautet der Betreff genau "%s".
 
 Wenn eine Liste möglicher Ansprechpartner mitgegeben wird und du den Anrufer
 darin sicher wiedererkennst (Name im Transkript passt eindeutig), setze
@@ -52,12 +102,30 @@ class TriageResult:
     melder_id: int | None
 
 
+def build_system_prompt(extra_abbreviations=None):
+    """Setzt den Systemprompt samt Abkürzungsliste zusammen.
+
+    Zusätzliche Kürzel aus der config.toml werden angehängt, nicht ersetzt -
+    wer ein neues Kürzel braucht, schreibt eine Zeile und nicht die ganze
+    Liste.
+    """
+    kuerzel = list(DEFAULT_ABBREVIATIONS)
+    for item in (extra_abbreviations or []):
+        item = str(item).strip()
+        if item and item not in kuerzel:
+            kuerzel.append(item)
+    return SYSTEM_PROMPT_TEMPLATE % (", ".join(kuerzel),
+                                     EMPTY_TRANSCRIPT_SUBJECT)
+
+
 def build_user_prompt(transcript, caller_number="", voicemail_box="",
                       contacts=None):
     """Baut die Nutzer-Nachricht für das LLM zusammen."""
     lines = []
     if caller_number:
-        lines.append("Anrufernummer: %s" % caller_number)
+        # Ausdrücklich "übermittelt": diese Nummer gehört nicht in den
+        # Betreff, sie steht ohnehin am Ticket.
+        lines.append("Übermittelte Anrufernummer: %s" % caller_number)
     if voicemail_box:
         lines.append("Voicemail-Box: %s" % voicemail_box)
     if contacts:
@@ -72,10 +140,28 @@ def build_user_prompt(transcript, caller_number="", voicemail_box="",
     return "\n".join(lines)
 
 
+def shorten_subject(text, limit=MAX_SUBJECT_LENGTH):
+    """Kürzt den Betreff auf die Feldlänge von bug.ueberschrift.
+
+    Geschnitten wird an der Wortgrenze und mit Auslassungszeichen beendet -
+    ein hart abgeschnittenes Wort sieht in der Ticketliste aus wie ein
+    Tippfehler. Zeilenumbrüche und Mehrfach-Leerzeichen fallen weg, weil ein
+    Betreff einzeilig ist.
+    """
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text
+    cut = text[:limit - 2].rstrip()
+    space = cut.rfind(" ")
+    if space >= limit // 2:
+        cut = cut[:space]
+    return cut.rstrip(" ,;:.+/-<>") + " …"
+
+
 def parse_triage_json(text):
     """Zieht das JSON-Objekt aus der LLM-Antwort und prüft die Felder.
 
-    Modelle verpacken JSON gern in ```-Zäune oder hängen Sätze an -
+    Modelle verpacken JSON gern in Code-Zäune oder hängen Sätze an -
     darum wird das erste {...}-Paar gesucht statt blind json.loads zu rufen.
     Liefert None, wenn nichts Brauchbares zu holen ist.
     """
@@ -94,26 +180,38 @@ def parse_triage_json(text):
     beschreibung = str(data.get("beschreibung") or "").strip()
     if not betreff or not beschreibung:
         return None
+    shortened = shorten_subject(betreff)
+    if shortened != betreff:
+        LOG.info("Betreff des LLM war %d Zeichen lang und wurde gekürzt: %s",
+                 len(betreff), shortened)
     melder_id = data.get("melder_id")
     if not isinstance(melder_id, int) or melder_id <= 0:
         melder_id = None
-    return TriageResult(betreff=betreff[:200], beschreibung=beschreibung,
+    return TriageResult(betreff=shortened, beschreibung=beschreibung,
                         melder_id=melder_id)
 
 
 def run_triage(llm, transcript, caller_number="", voicemail_box="",
-               contacts=None):
+               contacts=None, extra_abbreviations=None):
     """LLM-Aufruf plus Parsen; None bei Fehler oder unbrauchbarer Antwort.
 
-    melder_id wird gegen die Kandidatenliste geprüft - das LLM darf nur
-    IDs vorschlagen, die es auch angeboten bekam.
+    Ein leeres Transkript (Piepton gehört, aufgelegt) braucht kein LLM -
+    dafür steht der feste Betreff bereit. melder_id wird gegen die
+    Kandidatenliste geprüft: das LLM darf nur IDs vorschlagen, die es auch
+    angeboten bekam.
     """
     if llm is None:
         return None
+    if not (transcript or "").strip():
+        LOG.info("Transkript ist leer - kein LLM-Aufruf, Betreff \"%s\".",
+                 EMPTY_TRANSCRIPT_SUBJECT)
+        return TriageResult(betreff=EMPTY_TRANSCRIPT_SUBJECT,
+                            beschreibung=EMPTY_TRANSCRIPT_CONTENT,
+                            melder_id=None)
     user = build_user_prompt(transcript, caller_number, voicemail_box,
                              contacts)
     try:
-        answer = llm.complete(SYSTEM_PROMPT, user)
+        answer = llm.complete(build_system_prompt(extra_abbreviations), user)
     except LlmError as error:
         LOG.warning("LLM-Aufruf fehlgeschlagen: %s", error)
         return None

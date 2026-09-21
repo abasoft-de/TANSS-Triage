@@ -41,7 +41,13 @@ Für jedes gefundene Ticket:
      ermittelt werden, passiert ebenfalls nichts.
    - **LLM-Aufbereitung** (nur wenn konfiguriert): Betreff und strukturierte
      Beschreibung aus dem Transkript; kennt das LLM die Ansprechpartnerliste
-     der Firma, darf es den Melder vorschlagen.
+     der Firma, darf es den Melder vorschlagen. Der Betreff folgt dem Stil
+     der Hotline-Tickets (Telegrammstil ohne Floskeln, Hausabkürzungen wie
+     KIM, ePA, KT, HZV, Rückrufhinweis "RR" samt genannter Nummer, maximal
+     100 Zeichen - die Feldlänge von `bug.ueberschrift`); weitere Kürzel
+     kommen über `[llm] subject_abbreviations_extra` dazu. Eine
+     Sprachnachricht ohne Inhalt bekommt den Betreff "Sprachnachricht ohne
+     Inhalt" ohne LLM-Aufruf.
    - **Überschreib-Schutz**: Betreff wird nur ersetzt, solange er noch mit
      "Sie haben eine Sprachnachricht" beginnt; die Beschreibung nur, solange
      die Starface-Boilerplate ("WARNUNG: EXTERNE NACHRICHT" / "STARFACE")

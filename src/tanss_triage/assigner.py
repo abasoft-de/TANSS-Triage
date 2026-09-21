@@ -75,7 +75,8 @@ def multi_company_checker(db_cfg):
 
 
 def decide_assignment(identify_content, is_multi_company,
-                      assign_remitter=True, phone_roles=None):
+                      assign_remitter=True, phone_roles=None,
+                      employee_label=None):
     """Wendet die Zuordnungsregeln auf eine identify-Antwort an.
 
     identify_content ist der content der API-Antwort. Die Doku beschreibt
@@ -87,11 +88,13 @@ def decide_assignment(identify_content, is_multi_company,
     phone_roles: Funktion company_id -> (ist_firmennummer, [mitarbeiter_ids
     mit dieser Nummer]) oder None; nur die flache Form braucht sie, weil
     dort Zentrale-vs-Durchwahl und Eindeutigkeit fehlen.
+    employee_label: Funktion employee_id -> Name, für die Begründungen -
+    die flache Antwort nennt nur IDs, und eine ID sagt niemandem etwas.
     """
     content = identify_content or {}
     if not content.get("fromPhoneNrInfos"):
         return _decide_flat(content, is_multi_company, assign_remitter,
-                            phone_roles)
+                            phone_roles, employee_label)
     infos = content.get("fromPhoneNrInfos") or {}
     found_type = infos.get("foundType") or "NONE"
     items = infos.get("items") or []
@@ -174,7 +177,8 @@ def decide_assignment(identify_content, is_multi_company,
                            "keine automatische Zuordnung.")
 
 
-def _decide_flat(content, is_multi_company, assign_remitter, phone_roles):
+def _decide_flat(content, is_multi_company, assign_remitter, phone_roles,
+                 employee_label=None):
     """Zuordnungsregeln für die flache identify-Antwort.
 
     Sie nennt höchstens EINE Firma und EINEN Mitarbeiter, ohne zu sagen,
@@ -189,11 +193,12 @@ def _decide_flat(content, is_multi_company, assign_remitter, phone_roles):
                                "keine automatische Zuordnung.")
 
     if employee_id > 0:
+        label = (employee_label(employee_id) if employee_label else "") or ""
+        person = label or "Mitarbeiter %d" % employee_id
         multi = is_multi_company(employee_id)
         if multi is True:
-            return Assignment(note="Mitarbeiter %d arbeitet in mehreren "
-                                   "Firmen - keine automatische Zuordnung."
-                                   % employee_id)
+            return Assignment(note="%s arbeitet in mehreren Firmen - "
+                                   "keine automatische Zuordnung." % person)
         if multi is None:
             return Assignment(note="Mehrfach-Firmen-Prüfung nicht möglich "
                                    "(DB nicht erreichbar) - "
@@ -205,8 +210,8 @@ def _decide_flat(content, is_multi_company, assign_remitter, phone_roles):
             if not is_company_number and employee_ids == [employee_id]:
                 return Assignment(
                     company_id=company_id, remitter_id=employee_id,
-                    note="Rufnummer eindeutig: Mitarbeiter %d (Firma %d)."
-                         % (employee_id, company_id))
+                    note="Rufnummer eindeutig: %s." % person,
+                    remitter_label=label)
         return Assignment(
             company_id=company_id,
             note="Firma zugewiesen, Melder offen (Nummer nicht eindeutig "

@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 from . import __version__
 from .assigner import Assignment, decide_assignment
+from .tanss_client import TanssApiError
 from .triage import run_triage
 
 LOG = logging.getLogger("tanss_triage.processor")
@@ -269,9 +270,13 @@ class Processor:
                             assignment.company_id)]
                 except Exception as error:
                     LOG.warning("Ansprechpartnerliste für Firma %s nicht "
-                                "ladbar: %s", assignment.company_id, error)
-            triage_result = run_triage(self.llm, combined_transcript,
-                                       caller_number, voicemail_box, contacts)
+                                "ladbar: %s",
+                                self._company_label(assignment.company_id,
+                                                    assignment), error)
+            triage_result = run_triage(
+                self.llm, combined_transcript, caller_number, voicemail_box,
+                contacts,
+                extra_abbreviations=self.cfg.llm.subject_abbreviations_extra)
 
         ticket = self.client.get_ticket(ticket_id)
         update, update_notes = self._build_update(ticket, bool(starface_mail),
@@ -295,15 +300,55 @@ class Processor:
         if update:
             if self.cfg.dry_run:
                 LOG.info("[dry-run] Ticket-Update %d: %s", ticket_id,
-                         {key: update[key] for key in
-                          ("title", "companyId", "remitterId")
-                          if key in update})
-            else:
-                self.client.update_ticket(ticket_id, update)
-                LOG.info("Ticket %d aktualisiert (%s).", ticket_id,
                          ", ".join(update_notes))
+                if "title" in update:
+                    LOG.info("[dry-run] Neuer Betreff: %s", update["title"])
+            else:
+                self._apply_update(ticket_id, update, update_notes)
 
     # -- Teilschritte
+
+    def _apply_update(self, ticket_id, update, notes):
+        """Schreibt das Ticket-Update; nach einem Fehler wird nachgelesen.
+
+        TANSS (Stand 2026-09) quittiert ein PUT, das den Betreff ändert,
+        mit HTTP 400 RUNTIME_EXCEPTION - gespeichert wird die Änderung
+        trotzdem, samt Historieneinträgen. Statt ein erledigtes Update als
+        Fehler zu melden, wird das Ticket deshalb noch einmal gelesen:
+        stehen die gewünschten Werte drin, gilt das Update als geglückt und
+        die falsche Fehlermeldung bleibt draußen (sie steht nur auf DEBUG,
+        damit sie bei Bedarf nachvollziehbar ist). Sonst fliegt der Fehler
+        weiter.
+        """
+        try:
+            self.client.update_ticket(ticket_id, update)
+        except TanssApiError as error:
+            if not self._update_took_effect(ticket_id, update):
+                raise
+            LOG.debug("Ticket %d: TANSS quittierte das wirksame Update mit "
+                      "einem Fehler: %s", ticket_id, error)
+        LOG.info("Ticket %d aktualisiert (%s).", ticket_id, ", ".join(notes))
+
+    def _update_took_effect(self, ticket_id, update):
+        """Stehen die geschriebenen Werte im Ticket? Nur die, die zählen."""
+        try:
+            fresh = self.client.get_ticket(ticket_id)
+        except Exception as error:
+            LOG.info("Ticket %d nach dem Fehler nicht erneut lesbar: %s",
+                     ticket_id, error)
+            return False
+
+        def normalized(value):
+            return " ".join(str(value or "").split())
+
+        for key in ("title", "content"):
+            if key in update and normalized(fresh.get(key)) != normalized(
+                    update[key]):
+                return False
+        for key in ("companyId", "remitterId"):
+            if key in update and fresh.get(key) != update[key]:
+                return False
+        return True
 
     def _collect_audio_sources(self, ticket_id, history):
         """Sammelt alle Audio-Dateien eines Tickets.
@@ -423,7 +468,9 @@ class Processor:
                 identified, self.is_multi_company,
                 assign_remitter=self.cfg.assignment.assign_remitter,
                 phone_roles=lambda company_id, number=candidate:
-                    self.phone_roles_lookup(number, company_id))
+                    self.phone_roles_lookup(number, company_id),
+                employee_label=lambda employee_id:
+                    self.labels_lookup(None, employee_id)[1])
             if assignment.has_change:
                 if candidate != normalized:
                     LOG.info("Rufnummer %s erst in der gelieferten "
@@ -469,7 +516,8 @@ class Processor:
 
         if assignment.company_id:
             update["companyId"] = assignment.company_id
-            notes.append("Firma %d" % assignment.company_id)
+            notes.append("Firma %s" % self._company_label(assignment.company_id,
+                                                          assignment))
         remitter = assignment.remitter_id
         if (remitter is None and triage_result
                 and triage_result.melder_id
@@ -480,9 +528,31 @@ class Processor:
             # auch keinen Vorschlag.
         if remitter:
             update["remitterId"] = remitter
-            notes.append("Melder %d" % remitter)
+            notes.append("Melder %s" % self._person_label(remitter,
+                                                          assignment))
 
         return (update, notes) if notes else (None, [])
+
+    def _company_label(self, company_id, assignment=None):
+        """KUBEZ der Firma für Log und Notizen; notfalls die nackte ID.
+
+        Eine Firmen-ID sagt niemandem etwas, der ins Journal schaut - die
+        Kurzbezeichnung (firmen.displayID) dagegen sofort.
+        """
+        if not company_id:
+            return ""
+        kubez, _ = self.labels_lookup(company_id, None)
+        return (kubez or (assignment.company_label if assignment else "")
+                or "#%s" % company_id)
+
+    def _person_label(self, employee_id, assignment=None):
+        """Name des Ansprechpartners für Log und Notizen; notfalls die ID."""
+        if not employee_id:
+            return ""
+        _, person = self.labels_lookup(None, employee_id)
+        if not person and assignment and assignment.remitter_id == employee_id:
+            person = assignment.remitter_label
+        return person or "#%s" % employee_id
 
     def _assignment_line(self, assignment):
         """Die Zuordnungszeile des Kommentars.
@@ -497,7 +567,7 @@ class Processor:
         kubez, person = self.labels_lookup(assignment.company_id,
                                            assignment.remitter_id)
         kubez = (kubez or assignment.company_label
-                 or "Firma %d" % assignment.company_id)
+                 or "Firma #%d" % assignment.company_id)
         if assignment.remitter_id:
             person = person or assignment.remitter_label
             if person:

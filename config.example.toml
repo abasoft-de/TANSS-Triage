@@ -40,6 +40,12 @@ model = "claude-sonnet-5"
 base_url = ""
 max_tokens = 1500
 timeout = 120
+# Zusätzliche Hausabkürzungen, die das LLM im Betreff verwenden soll (die
+# eingebaute Liste - EVA, KIM, ePA, eRP, KT, HZV, PAL, RR ... - steht in
+# src/tanss_triage/triage.py und bleibt erhalten; hier kommt nur dazu, was
+# neu ist). Whisper schreibt aus, was gesprochen wird; der Betreff soll das
+# Kürzel tragen, das die Hotline auch von Hand notiert.
+subject_abbreviations_extra = []   # z. B. ["Hybrid-DRG", "eAB", "DMP"]
 
 [starface]
 # Eingehende Mails dieser Absender machen ein Ticket zum Starface-Ticket

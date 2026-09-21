@@ -10,12 +10,18 @@ Beschreibung: Prüft die Hilfsfunktionen des Prozessors (Audio-Filter,
 Letzte Änderung: 2026-09-10
 """
 
+import logging
+
+import pytest
+
+from tanss_triage.assigner import Assignment
 from tanss_triage.config import Config
 from tanss_triage.processor import (
     MARKER_PREFIX, Processor, extract_caller_info, find_audio_documents,
     find_starface_mail, history_has_marker, should_replace_content,
     should_replace_title, comment_marker)
 from tanss_triage.state import State
+from tanss_triage.tanss_client import TanssApiError
 from tanss_triage.transcriber import Transcript
 
 STARFACE_SUBJECT = ("Sie haben eine Sprachnachricht von  00497432994360 "
@@ -282,7 +288,7 @@ def test_starface_ticket_full_flow(tmp_path):
     assert MARKER_PREFIX not in body       # kein Marker mehr (Vorgabe)
     assert "Datei:" not in body
     # Ohne DB-Labels greifen die Fallbacks aus der identify-Antwort
-    assert "Zuordnung: Firma 94 | Duft, Petra" in body
+    assert "Zuordnung: Firma #94 | Duft, Petra" in body
     assert internal is True
 
     assert len(client.updates) == 1
@@ -492,3 +498,75 @@ def test_without_audio_nothing_happens(tmp_path):
     processor.process_ticket(4711)
     assert client.comments == []
     assert client.updates == []
+
+
+def test_update_notes_name_company_and_person(tmp_path):
+    """Im Log stehen KUBEZ und Name, nicht die IDs."""
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET)
+    processor = _processor(
+        _config(tmp_path), client, llm=None,
+        labels=("ABASTU", "Herr Dr. med. Sascha Orlik (Arzt)"))
+    assignment = Assignment(company_id=94, remitter_id=7)
+
+    _, notes = processor._build_update(STARFACE_TICKET, True, assignment,
+                                       None, transcript_text="Text")
+    assert "Firma ABASTU" in notes
+    assert "Melder Herr Dr. med. Sascha Orlik (Arzt)" in notes
+
+
+def test_update_notes_fall_back_to_ids_without_db(tmp_path):
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET)
+    processor = _processor(_config(tmp_path), client, llm=None)
+    assignment = Assignment(company_id=94, remitter_id=7)
+
+    _, notes = processor._build_update(STARFACE_TICKET, True, assignment,
+                                       None, transcript_text="Text")
+    assert "Firma #94" in notes
+    assert "Melder #7" in notes
+
+
+class _FailingUpdateClient(FakeClient):
+    """PUT quittiert mit Fehler, schreibt aber - wie TANSS es tut."""
+
+    def __init__(self, *args, apply_write=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.apply_write = apply_write
+
+    def update_ticket(self, ticket_id, ticket):
+        self.updates.append((ticket_id, ticket))
+        if self.apply_write:
+            self.ticket = dict(self.ticket, **{
+                key: ticket[key] for key in
+                ("title", "content", "companyId", "remitterId")
+                if key in ticket})
+        raise TanssApiError("PUT /api/v1/tickets/%d -> HTTP 400: "
+                            "RUNTIME_EXCEPTION" % ticket_id)
+
+
+def test_saved_update_survives_tanss_runtime_exception(tmp_path, caplog):
+    """Betreffänderung: TANSS antwortet 400, speichert aber - kein Abbruch."""
+    client = _FailingUpdateClient(AUDIO_DOCUMENTS, STARFACE_HISTORY,
+                                  dict(STARFACE_TICKET),
+                                  identify=IDENTIFY_EMPLOYEE)
+    processor = _processor(_config(tmp_path), client, llm=FakeLlm())
+    with caplog.at_level(logging.INFO, logger="tanss_triage.processor"):
+        processor.process_ticket(4711)              # darf nicht fliegen
+
+    assert len(client.updates) == 1
+    assert client.ticket["title"] == "Faxversand gestört"
+    assert len(client.comments) == 1
+    # Im Log steht nur der Erfolg, keine irreführende Fehlermeldung
+    assert any("Ticket 4711 aktualisiert" in record.message
+               for record in caplog.records)
+    assert all(record.levelno < logging.WARNING for record in caplog.records)
+
+
+def test_lost_update_still_raises(tmp_path):
+    """Wenn nichts ankam, bleibt der Fehler ein Fehler."""
+    client = _FailingUpdateClient(AUDIO_DOCUMENTS, STARFACE_HISTORY,
+                                  dict(STARFACE_TICKET),
+                                  identify=IDENTIFY_EMPLOYEE,
+                                  apply_write=False)
+    processor = _processor(_config(tmp_path), client, llm=FakeLlm())
+    with pytest.raises(TanssApiError):
+        processor.process_ticket(4711)
