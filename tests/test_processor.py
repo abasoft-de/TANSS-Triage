@@ -17,9 +17,10 @@ import pytest
 from tanss_triage.assigner import Assignment
 from tanss_triage.config import Config
 from tanss_triage.processor import (
-    MARKER_PREFIX, Processor, extract_caller_info, find_audio_documents,
-    find_starface_mail, history_has_marker, should_replace_content,
-    should_replace_title, comment_marker)
+    LINK_TYPE_COMPANY, LINK_TYPE_EMPLOYEE, MARKER_PREFIX, Processor,
+    extract_caller_info, find_audio_documents, find_starface_mail,
+    history_has_marker, should_replace_content, should_replace_title,
+    comment_marker, ticket_url)
 from tanss_triage.state import State
 from tanss_triage.tanss_client import TanssApiError
 from tanss_triage.transcriber import Transcript
@@ -537,7 +538,8 @@ class _FailingUpdateClient(FakeClient):
         if self.apply_write:
             self.ticket = dict(self.ticket, **{
                 key: ticket[key] for key in
-                ("title", "content", "companyId", "remitterId")
+                ("title", "content", "companyId", "remitterId",
+                 "linkTypeId", "linkId")
                 if key in ticket})
         raise TanssApiError("PUT /api/v1/tickets/%d -> HTTP 400: "
                             "RUNTIME_EXCEPTION" % ticket_id)
@@ -570,3 +572,62 @@ def test_lost_update_still_raises(tmp_path):
     processor = _processor(_config(tmp_path), client, llm=FakeLlm())
     with pytest.raises(TanssApiError):
         processor.process_ticket(4711)
+
+
+def test_ticket_url_carries_company():
+    assert ticket_url("https://tanss.abasoft.de/", 253913, 75) == (
+        "https://tanss.abasoft.de/index.php?section=bug&sub=view"
+        "&neueFirma=75&bugID=253913")
+    # Die API kann hinter /backend liegen, die Oberfläche nicht
+    assert ticket_url("https://tanss.abasoft.de/backend", 4711, 0) == (
+        "https://tanss.abasoft.de/index.php?section=bug&sub=view"
+        "&neueFirma=0&bugID=4711")
+
+
+def test_link_to_ticket_is_last_log_line(tmp_path, caplog):
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY,
+                        dict(STARFACE_TICKET), identify=IDENTIFY_EMPLOYEE)
+    processor = _processor(_config(tmp_path), client, llm=None)
+    with caplog.at_level(logging.INFO, logger="tanss_triage.processor"):
+        processor.process_ticket(4711)
+
+    assert caplog.records[-1].getMessage().endswith(
+        "index.php?section=bug&sub=view&neueFirma=94&bugID=4711")
+
+
+def test_assignment_points_to_contact(tmp_path):
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET)
+    processor = _processor(_config(tmp_path), client, llm=None)
+    assignment = Assignment(company_id=94, remitter_id=7)
+
+    update, notes = processor._build_update(STARFACE_TICKET, True, assignment,
+                                            None, transcript_text="Text")
+    assert update["linkTypeId"] == LINK_TYPE_EMPLOYEE
+    assert update["linkId"] == 7
+    assert "Zuweisung Ansprechpartner" in notes
+
+
+def test_assignment_points_to_company_without_contact(tmp_path):
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET)
+    processor = _processor(_config(tmp_path), client, llm=None)
+    assignment = Assignment(company_id=94)
+
+    update, notes = processor._build_update(STARFACE_TICKET, True, assignment,
+                                            None, transcript_text="Text")
+    assert update["linkTypeId"] == LINK_TYPE_COMPANY
+    assert update["linkId"] == 94
+    assert "Zuweisung Firma" in notes
+
+
+def test_existing_assignment_is_kept(tmp_path):
+    """Von Hand gewählte Zuweisung bleibt stehen."""
+    client = FakeClient(AUDIO_DOCUMENTS, STARFACE_HISTORY, STARFACE_TICKET)
+    processor = _processor(_config(tmp_path), client, llm=None)
+    ticket = dict(STARFACE_TICKET, linkTypeId=LINK_TYPE_COMPANY, linkId=94)
+    assignment = Assignment(company_id=94, remitter_id=7)
+
+    update, notes = processor._build_update(ticket, True, assignment, None,
+                                            transcript_text="Text")
+    assert update["linkTypeId"] == LINK_TYPE_COMPANY
+    assert update["linkId"] == 94
+    assert not any(note.startswith("Zuweisung") for note in notes)

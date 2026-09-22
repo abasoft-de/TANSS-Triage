@@ -5,6 +5,28 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.6.2] - 2026-09-22
+
+### Hinzugefügt
+
+- Als letzte Zeile zu jedem verarbeiteten Ticket steht der aufrufbare
+  TANSS-Link im Log
+  (`.../index.php?section=bug&sub=view&neueFirma=<firmenID>&bugID=<id>`,
+  Format aus der Wissensbasis - `neueFirma` wechselt zugleich den
+  angezeigten Kunden). Liegt die API hinter `/backend`, fällt das Präfix
+  für den Oberflächen-Link weg.
+
+### Behoben
+
+- **Zuweisung wurde nicht gesetzt**: Der Dienst trug Firma und Auftraggeber
+  ein, ließ die Ticket-Zuweisung (`bug.linkTypID`/`linkID`, in der API
+  `linkTypeId`/`linkId`) aber auf 0 stehen - Kolleg*innen mussten sie von
+  Hand nachziehen. Sie zeigt jetzt auf den Ansprechpartner (Typ 3), wenn
+  ein Melder ermittelt wurde, sonst auf die Firma (Typ 2). Eine bereits
+  gesetzte Zuweisung bleibt unangetastet. (Belegt an den Bestandsdaten:
+  bei Typ 2 ist `linkID` ausnahmslos die firmenID, bei Typ 3 ausnahmslos
+  ein Ansprechpartner der Ticketfirma.)
+
 ## [0.6.1] - 2026-09-21
 
 ### Behoben

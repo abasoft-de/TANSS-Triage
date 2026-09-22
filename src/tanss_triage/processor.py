@@ -34,6 +34,12 @@ LOG = logging.getLogger("tanss_triage.processor")
 
 MARKER_PREFIX = "[TANSS-Triage"
 
+# Ticket-Zuweisung (bug.linkTypID/linkID): auf welches Objekt das Ticket
+# zeigt. 2 = Firma (linkID ist die firmenID), 3 = Ansprechpartner (linkID
+# ist die mitarbeiterID, immer einer der Ticketfirma).
+LINK_TYPE_COMPANY = 2
+LINK_TYPE_EMPLOYEE = 3
+
 
 @dataclass
 class AudioSource:
@@ -180,6 +186,21 @@ def format_duration(seconds):
     return "%d:%02d" % divmod(seconds, 60)
 
 
+def ticket_url(base_url, ticket_id, company_id=0):
+    """Aufrufbarer TANSS-Link zum Ticket.
+
+    Format aus der Wissensbasis: neben der bugID gehört die firmenID als
+    neueFirma in den Link - TANSS wechselt damit gleichzeitig den
+    angezeigten Kunden, sodass man von dort weiter recherchieren kann.
+    Die API kann hinter /backend liegen, die Oberfläche nicht.
+    """
+    base = (base_url or "").rstrip("/")
+    if base.endswith("/backend"):
+        base = base[:-len("/backend")]
+    return ("%s/index.php?section=bug&sub=view&neueFirma=%d&bugID=%d"
+            % (base, int(company_id or 0), int(ticket_id)))
+
+
 class Processor:
     """Verdrahtet Client, Whisper, LLM und State für je ein Ticket."""
 
@@ -306,6 +327,13 @@ class Processor:
             else:
                 self._apply_update(ticket_id, update, update_notes)
 
+        # Letzte Zeile zum Ticket: der Link, damit man aus dem Journal
+        # heraus direkt hinspringen kann.
+        LOG.info("Ticket %d: %s", ticket_id,
+                 ticket_url(self.cfg.tanss.base_url, ticket_id,
+                            (update or {}).get("companyId")
+                            or ticket.get("companyId")))
+
     # -- Teilschritte
 
     def _apply_update(self, ticket_id, update, notes):
@@ -345,7 +373,7 @@ class Processor:
             if key in update and normalized(fresh.get(key)) != normalized(
                     update[key]):
                 return False
-        for key in ("companyId", "remitterId"):
+        for key in ("companyId", "remitterId", "linkTypeId", "linkId"):
             if key in update and fresh.get(key) != update[key]:
                 return False
         return True
@@ -530,6 +558,21 @@ class Processor:
             update["remitterId"] = remitter
             notes.append("Melder %s" % self._person_label(remitter,
                                                           assignment))
+
+        # Die Zuweisung (linkTypeId/linkId) gehört zur Zuordnung dazu; ohne
+        # sie steht das Ticket zwar bei der Firma, ist aber keinem Objekt
+        # zugewiesen. Kennen wir den Ansprechpartner, zeigt sie auf ihn,
+        # sonst auf die Firma. Eine vorhandene Zuweisung bleibt unangetastet -
+        # die hat jemand von Hand gewählt.
+        if not ticket.get("linkTypeId"):
+            if remitter:
+                update["linkTypeId"] = LINK_TYPE_EMPLOYEE
+                update["linkId"] = remitter
+                notes.append("Zuweisung Ansprechpartner")
+            elif assignment.company_id:
+                update["linkTypeId"] = LINK_TYPE_COMPANY
+                update["linkId"] = assignment.company_id
+                notes.append("Zuweisung Firma")
 
         return (update, notes) if notes else (None, [])
 
