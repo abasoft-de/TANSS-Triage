@@ -37,6 +37,10 @@ TICKET_WRITE_FIELDS = (
 )
 
 
+# linkTypeId eines Tickets bei polymorphen Zuweisungen (Tags: tag_zuw)
+LINK_TYPE_TICKET = 11
+
+
 class TanssApiError(RuntimeError):
     """Antwort der TANSS-API war kein Erfolg."""
 
@@ -158,6 +162,22 @@ class TanssClient:
         return self._content(self._request(
             "PUT", "/api/v1/tickets/%d" % ticket_id,
             json_body=body, params={"remitterCheck": "false"}))
+
+    # -- Tags (linkTypeId 11 = Ticket, wie in tag_zuw)
+
+    def get_ticket_tags(self, ticket_id):
+        """Die Tags, die schon am Ticket hängen."""
+        return self._content(self._request(
+            "GET", "/api/v1/tags/assignment",
+            params={"linkTypeId": LINK_TYPE_TICKET,
+                    "linkId": ticket_id})) or []
+
+    def add_ticket_tag(self, ticket_id, tag_id):
+        """Hängt einen Tag ans Ticket; vorhandene Tags bleiben."""
+        return self._content(self._request(
+            "POST", "/api/v1/tags/assignment",
+            json_body={"tagId": tag_id, "linkTypeId": LINK_TYPE_TICKET,
+                       "linkId": ticket_id}))
 
     def post_comment(self, ticket_id, title, content, internal=True):
         return self._content(self._request(

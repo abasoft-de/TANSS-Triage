@@ -86,8 +86,10 @@ def test_system_prompt_carries_house_style():
 
 def test_system_prompt_appends_extra_abbreviations():
     prompt = build_system_prompt(["Hybrid-DRG", "  ", "ePA"])
-    assert "Hybrid-DRG" in prompt
-    assert prompt.count("ePA,") == 1        # Dubletten fallen weg
+    kuerzel = next(line for line in prompt.splitlines()
+                   if line.strip().startswith("EVA, EVABOX"))
+    assert "Hybrid-DRG" in kuerzel
+    assert kuerzel.count("ePA,") == 1       # Dubletten fallen weg
 
 
 class _FakeLlm:

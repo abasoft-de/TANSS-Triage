@@ -63,6 +63,23 @@ generic_content_patterns = ["WARNUNG: EXTERNE NACHRICHT", "STARFACE"]
 enabled = true
 assign_remitter = true
 
+[departments]
+# Abteilung, bei der jedes Starface-Ticket landet (auch ohne LLM). Gesetzt
+# wird nur, solange das Ticket noch keiner Abteilung zugewiesen ist.
+enabled = true
+id = 8                            # mitarbeiter_abteilung.ID der HLE
+name = "HLE"                      # nur fürs Log
+
+[outage]
+# Praxisausfall (Server weg, Praxis kann nicht arbeiten - erkennt das LLM):
+# Betreff mit Präfix, Fälligkeit und Deadline sofort, Tag DRINGEND. Der
+# API-Benutzer braucht dafür die Rechte "Ticket-System: Fälligkeit
+# bearbeiten" und "Ticket-System: Deadline bearbeiten".
+enabled = true
+title_prefix = "SERVERAUSFALL !! "
+tag_id = 53                       # tag.id von "DRINGEND"; 0 = kein Tag
+tag_name = "DRINGEND"             # nur fürs Log
+
 [db]
 # Read-only-Zugriff auf die TANSS-MariaDB für den Mehrfach-Firmen-Check
 # (mitarbeiter_firmen) - dieselbe Zugangsdatei wie der MCP-Server.

@@ -539,7 +539,8 @@ class _FailingUpdateClient(FakeClient):
             self.ticket = dict(self.ticket, **{
                 key: ticket[key] for key in
                 ("title", "content", "companyId", "remitterId",
-                 "linkTypeId", "linkId")
+                 "linkTypeId", "linkId", "assignedToDepartmentId",
+                 "dueDate", "deadlineDate")
                 if key in ticket})
         raise TanssApiError("PUT /api/v1/tickets/%d -> HTTP 400: "
                             "RUNTIME_EXCEPTION" % ticket_id)

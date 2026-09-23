@@ -10,10 +10,11 @@ Beschreibung: Baut aus dem Transkript einer Sprachnachricht per LLM einen
               abgeleitet aus den bestehenden HLE-/HLT-Betreffen.
               Bekommt das LLM zusätzlich die Ansprechpartnerliste der schon
               identifizierten Firma, darf es den Melder vorschlagen (nur IDs
-              aus der Liste werden akzeptiert). Die Antwort ist striktes JSON;
-              was nicht parsebar ist, führt zu "kein Update" statt zu einem
-              kaputten Ticket.
-Letzte Änderung: 2026-09-21
+              aus der Liste werden akzeptiert). Außerdem kennzeichnet es
+              Praxisausfälle (Server weg, Praxis kann nicht arbeiten). Die
+              Antwort ist striktes JSON; was nicht parsebar ist, führt zu
+              "kein Update" statt zu einem kaputten Ticket.
+Letzte Änderung: 2026-09-23
 """
 
 import json
@@ -62,7 +63,8 @@ danach, mit genau diesen Feldern:
 {
   "betreff": "Ticketbetreff nach den Betreff-Regeln unten",
   "beschreibung": "strukturierte Zusammenfassung: 1-3 Sätze Anliegen, danach falls vorhanden Zeilen wie 'Anrufer: ...', 'Rückruf unter: ...', 'Dringlichkeit: ...'. Der Name des Anrufers gehört hierher, auch wenn er im Betreff entfällt. Nur Informationen aus Transkript/Metadaten, nichts erfinden.",
-  "melder_id": null
+  "melder_id": null,
+  "praxisausfall": true oder false (Regel unten)
 }
 
 Betreff-Regeln - so benennt die Hotline ihre Tickets:
@@ -73,7 +75,7 @@ Betreff-Regeln - so benennt die Hotline ihre Tickets:
 - Kein Satzpunkt, keine Floskeln ("Sprachnachricht von", "Anruf wegen"),
   keine Praxis- oder Firmennamen - die Firma hängt am Ticket.
 - Nutze die Hausabkürzungen, auch wenn das Transkript sie ausspricht:
-  %s.
+  %(kuerzel)s.
   Fachbegriffe, die du nicht sicher zuordnest, lässt du so stehen, wie sie
   im Transkript fallen.
 - Höchstens drei Anliegen, verbunden mit " + ". Einen Zusatzhinweis hängst
@@ -86,12 +88,28 @@ Betreff-Regeln - so benennt die Hotline ihre Tickets:
   ("... -> RR Frau Meier 07141 141210"), nie am Betreffanfang.
 - Dringlichkeit nur übernehmen, wenn der Anrufer sie ausspricht
   ("dringend", "Praxis steht still").
-- Wurde nichts gesagt, lautet der Betreff genau "%s".
+- Nennt der Anrufer nur Namen, Praxis oder Rückrufnummer, ist das eine
+  Rückrufbitte ("Rückruf erbeten -> RR ..."), keine leere Nachricht.
+- Wurde nichts gesagt oder ist nichts verständlich, lautet der Betreff
+  genau "%(leer)s".
 
 Wenn eine Liste möglicher Ansprechpartner mitgegeben wird und du den Anrufer
 darin sicher wiedererkennst (Name im Transkript passt eindeutig), setze
 "melder_id" auf dessen id (Zahl). Im Zweifel null - eine falsche Zuordnung
-ist schlimmer als keine.\
+ist schlimmer als keine.
+
+Praxisausfall - gesondert kennzeichnen:
+- "praxisausfall": true, wenn die Praxis insgesamt nicht arbeiten kann:
+  Server ausgefallen oder nicht erreichbar, EVA startet an keinem
+  Arbeitsplatz, "Praxis steht still", "nichts geht mehr", "wir können
+  nicht arbeiten" - auch indirekt gesagt ("brauchen dringend Hilfe,
+  damit wir arbeiten können").
+- false bei allem, was nur einen Teil betrifft: ein einzelner
+  Arbeitsplatz oder ein Gerät, Internet oder TI allein (KIM, eRP,
+  Kartenlesen), solange in EVA weitergearbeitet werden kann. Im Zweifel
+  false - ein Fehlalarm macht ein Ticket unnötig dringend.
+- Den Betreff formulierst du wie immer; die Kennzeichnung als
+  Serverausfall setzt das Programm selbst davor.\
 """
 
 
@@ -100,6 +118,7 @@ class TriageResult:
     betreff: str
     beschreibung: str
     melder_id: int | None
+    praxisausfall: bool = False
 
 
 def build_system_prompt(extra_abbreviations=None):
@@ -114,8 +133,8 @@ def build_system_prompt(extra_abbreviations=None):
         item = str(item).strip()
         if item and item not in kuerzel:
             kuerzel.append(item)
-    return SYSTEM_PROMPT_TEMPLATE % (", ".join(kuerzel),
-                                     EMPTY_TRANSCRIPT_SUBJECT)
+    return SYSTEM_PROMPT_TEMPLATE % {"kuerzel": ", ".join(kuerzel),
+                                     "leer": EMPTY_TRANSCRIPT_SUBJECT}
 
 
 def build_user_prompt(transcript, caller_number="", voicemail_box="",
@@ -187,8 +206,11 @@ def parse_triage_json(text):
     melder_id = data.get("melder_id")
     if not isinstance(melder_id, int) or melder_id <= 0:
         melder_id = None
+    # Nur ein echtes true zählt - "ja", 1 oder "true" als Text machen kein
+    # Ticket dringend.
+    praxisausfall = data.get("praxisausfall") is True
     return TriageResult(betreff=shortened, beschreibung=beschreibung,
-                        melder_id=melder_id)
+                        melder_id=melder_id, praxisausfall=praxisausfall)
 
 
 def run_triage(llm, transcript, caller_number="", voicemail_box="",

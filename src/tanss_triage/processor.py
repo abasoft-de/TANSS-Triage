@@ -23,12 +23,13 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass
 
 from . import __version__
 from .assigner import Assignment, decide_assignment
 from .tanss_client import TanssApiError
-from .triage import run_triage
+from .triage import run_triage, shorten_subject
 
 LOG = logging.getLogger("tanss_triage.processor")
 
@@ -326,6 +327,9 @@ class Processor:
                     LOG.info("[dry-run] Neuer Betreff: %s", update["title"])
             else:
                 self._apply_update(ticket_id, update, update_notes)
+        if (self._is_outage(triage_result, bool(starface_mail))
+                and self.cfg.outage.tag_id):
+            self._tag_urgent(ticket_id)
 
         # Letzte Zeile zum Ticket: der Link, damit man aus dem Journal
         # heraus direkt hinspringen kann.
@@ -373,7 +377,8 @@ class Processor:
             if key in update and normalized(fresh.get(key)) != normalized(
                     update[key]):
                 return False
-        for key in ("companyId", "remitterId", "linkTypeId", "linkId"):
+        for key in ("companyId", "remitterId", "linkTypeId", "linkId",
+                    "assignedToDepartmentId", "dueDate", "deadlineDate"):
             if key in update and fresh.get(key) != update[key]:
                 return False
         return True
@@ -525,7 +530,7 @@ class Processor:
         if triage_result:
             if should_replace_title(ticket.get("title"),
                                     self.cfg.starface.generic_title_pattern):
-                update["title"] = triage_result.betreff
+                update["title"] = self._title_for(triage_result)
                 notes.append("Betreff gesetzt")
             else:
                 LOG.info("Betreff von Ticket %s wurde schon manuell "
@@ -574,7 +579,70 @@ class Processor:
                 update["linkId"] = assignment.company_id
                 notes.append("Zuweisung Firma")
 
+        self._set_department(ticket, update, notes)
+        if self._is_outage(triage_result, is_starface):
+            # Fälligkeit und Deadline "jetzt": das Ticket steht sofort oben
+            # in jeder Fälligkeitsansicht.
+            now = int(time.time())
+            update["dueDate"] = now
+            update["deadlineDate"] = now
+            note = "Praxisausfall: Fälligkeit und Deadline jetzt"
+            if self.cfg.outage.tag_id:
+                note += ", Tag %s" % (self.cfg.outage.tag_name
+                                      or "#%d" % self.cfg.outage.tag_id)
+            notes.append(note)
+
         return (update, notes) if notes else (None, [])
+
+    def _is_outage(self, triage_result, is_starface):
+        """Praxisausfall laut LLM - und die Sonderbehandlung ist an."""
+        return bool(is_starface and triage_result
+                    and triage_result.praxisausfall
+                    and self.cfg.outage.enabled)
+
+    def _title_for(self, triage_result):
+        """Neuer Betreff; bei Praxisausfall mit Präfix, in der Feldlänge."""
+        if self._is_outage(triage_result, True):
+            return shorten_subject(self.cfg.outage.title_prefix
+                                   + triage_result.betreff)
+        return triage_result.betreff
+
+    def _set_department(self, ticket, update, notes):
+        """Weist das Ticket der HLE zu, solange es keine Abteilung hat.
+
+        Alle Starface-Tickets landen bei der HLE (Vorgabe) - sie ist gut
+        besetzt und verteilt selbst weiter. Eine schon zugewiesene Abteilung
+        hat jemand von Hand gewählt; die bleibt.
+        """
+        department_id = self.cfg.departments.id
+        if not self.cfg.departments.enabled or not department_id:
+            return
+        if ticket.get("assignedToDepartmentId"):
+            return
+        update["assignedToDepartmentId"] = department_id
+        notes.append("Abteilung %s" % (self.cfg.departments.name
+                                      or "#%d" % department_id))
+
+    def _tag_urgent(self, ticket_id):
+        """Hängt den Praxisausfall-Tag an; vorhandene Tags bleiben stehen.
+
+        Ein Fehler hier ist kein Grund, die Verarbeitung abzubrechen - der
+        Rest des Tickets ist dann schon geschrieben.
+        """
+        tag_id = self.cfg.outage.tag_id
+        if self.cfg.dry_run:
+            LOG.info("[dry-run] Ticket %d: Tag %d würde gesetzt.",
+                     ticket_id, tag_id)
+            return
+        try:
+            present = {tag.get("id") for tag in
+                       self.client.get_ticket_tags(ticket_id) or []}
+            if tag_id in present:
+                return
+            self.client.add_ticket_tag(ticket_id, tag_id)
+        except Exception as error:
+            LOG.warning("Ticket %d: Tag %d ließ sich nicht setzen: %s",
+                        ticket_id, tag_id, error)
 
     def _company_label(self, company_id, assignment=None):
         """KUBEZ der Firma für Log und Notizen; notfalls die nackte ID.

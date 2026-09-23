@@ -5,6 +5,39 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.7.0] - 2026-09-23
+
+### Hinzugefügt
+
+- **Feste Abteilung HLE**: Jedes Starface-Ticket wird der HLE zugewiesen
+  (`assignedToDepartmentId`, `[departments] id`, Default 8), solange es
+  noch keiner Abteilung zugewiesen ist - auch ohne LLM. Die HLE ist gut
+  besetzt und verteilt selbst weiter. (Eine LLM-gestützte Zuordnung auf
+  HLE/HLT/Vertrieb war entworfen und getestet, ist aber auf Vorgabe
+  wieder entfallen.)
+- **Praxisausfall**: Kann die Praxis insgesamt nicht arbeiten (Server weg,
+  EVA startet nirgends, "Praxis steht still"), setzt das LLM das neue
+  Feld `praxisausfall`. Das Programm stellt dem Betreff "SERVERAUSFALL !! "
+  voran (innerhalb der 100 Zeichen), setzt Fälligkeit und Deadline auf
+  jetzt und hängt den Tag DRINGEND an (`POST /api/v1/tags/assignment`,
+  vorhandene Tags bleiben). Ein manuell geänderter Betreff bleibt auch hier
+  stehen; die Abteilung bleibt HLE. Nur ein echtes JSON-`true` zählt, der
+  Prompt verlangt im Zweifel `false`; ein indirekt ausgesprochener
+  Stillstand ("brauchen Hilfe, damit wir arbeiten können") zählt. Probelauf
+  mit Sonnet 5 gegen alle 71 Voicemails seit 15.09. und danach gegen die 22
+  Grenzfälle darunter: die drei echten Totalausfälle erkannt, kein
+  Fehlalarm - auch nicht bei einzelnem Arbeitsplatz, Homeoffice,
+  Kartenleser oder Internet allein. Abschaltbar über `[outage] enabled`,
+  der Tag über
+  `[outage] tag_id = 0`. Der API-Benutzer braucht zusätzlich das Recht
+  "Ticket-System: Deadline bearbeiten".
+
+### Geändert
+
+- Betreff-Regel ergänzt: Nennt der Anrufer nur Namen, Praxis oder
+  Rückrufnummer, ist das eine Rückrufbitte ("Rückruf erbeten -> RR ..."),
+  keine leere Nachricht.
+
 ## [0.6.2] - 2026-09-22
 
 ### Hinzugefügt

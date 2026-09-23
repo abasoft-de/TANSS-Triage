@@ -48,6 +48,11 @@ Für jedes gefundene Ticket:
      kommen über `[llm] subject_abbreviations_extra` dazu. Eine
      Sprachnachricht ohne Inhalt bekommt den Betreff "Sprachnachricht ohne
      Inhalt" ohne LLM-Aufruf.
+   - **Abteilung**: jedes Starface-Ticket landet bei der HLE, solange es
+     noch keiner Abteilung zugewiesen ist (`[departments]`).
+   - **Praxisausfall** (erkennt das LLM: Server weg, Praxis kann nicht
+     arbeiten): Betreff "SERVERAUSFALL !! ...", Fälligkeit und Deadline
+     sofort, Tag DRINGEND (`[outage]`).
    - **Überschreib-Schutz**: Betreff wird nur ersetzt, solange er noch mit
      "Sie haben eine Sprachnachricht" beginnt; die Beschreibung nur, solange
      die Starface-Boilerplate ("WARNUNG: EXTERNE NACHRICHT" / "STARFACE")
@@ -97,8 +102,11 @@ cp config.example.toml config.toml   # Verhalten anpassen (optional)
   `http://localhost:11434/v1` für Ollama) oder `none` (kein Rewrite,
   Transkript und Zuordnung laufen trotzdem).
 - Der TANSS-API-Benutzer braucht Rechte auf Tickets (lesen/ändern),
-  Historie, Dokumente, Kommentare, Rufnummern-Identifikation und - für
-  `--register-webhook` - Event-Regeln.
+  Historie, Dokumente, Kommentare und Rufnummern-Identifikation, dazu
+  "Ticket-System: Abteilung zuweisen", "Ticket-System: Fälligkeit
+  bearbeiten" und "Ticket-System: Deadline bearbeiten" (Praxisausfall) sowie
+  "Ticket-System: Tickets anzeigen (alle Abteilungen)" - sonst bleiben ihm
+  Tickets verborgen, die schon einer Abteilung zugewiesen sind.
 - Für den Mehrfach-Firmen-Check liest das Programm `~/.my.cnf` (dieselbe
   Datei wie der MCP-Server, User `tanssuser`, read-only). Fehlt sie, werden
   Ansprechpartner-Treffer sicherheitshalber nicht zugeordnet.

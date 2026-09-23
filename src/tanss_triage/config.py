@@ -84,6 +84,27 @@ class AssignmentConfig:
 
 
 @dataclass
+class DepartmentConfig:
+    # Abteilung, bei der jedes Starface-Ticket landet (mitarbeiter_abteilung.ID,
+    # 8 = HLE). Gesetzt wird nur, solange das Ticket noch keiner Abteilung
+    # zugewiesen ist.
+    enabled: bool = True
+    id: int = 8
+    name: str = "HLE"               # nur fürs Log
+
+
+@dataclass
+class OutageConfig:
+    # Praxisausfall (Server weg, Praxis kann nicht arbeiten - erkennt das
+    # LLM): Fälligkeit und Deadline sofort, Betreff mit Präfix, Tag
+    # (tag.id, 53 = "DRINGEND"; 0 = kein Tag).
+    enabled: bool = True
+    title_prefix: str = "SERVERAUSFALL !! "
+    tag_id: int = 53
+    tag_name: str = "DRINGEND"      # nur fürs Log
+
+
+@dataclass
 class DbConfig:
     defaults_file: str = "~/.my.cnf"
     host: str = "localhost"
@@ -138,6 +159,8 @@ class Config:
     llm: LlmConfig = field(default_factory=LlmConfig)
     starface: StarfaceConfig = field(default_factory=StarfaceConfig)
     assignment: AssignmentConfig = field(default_factory=AssignmentConfig)
+    departments: DepartmentConfig = field(default_factory=DepartmentConfig)
+    outage: OutageConfig = field(default_factory=OutageConfig)
     db: DbConfig = field(default_factory=DbConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     comment: CommentConfig = field(default_factory=CommentConfig)
@@ -204,6 +227,8 @@ def load_config(config_path=None, env_path=None):
     _fill(cfg.llm, raw.get("llm"))
     _fill(cfg.starface, raw.get("starface"))
     _fill(cfg.assignment, raw.get("assignment"))
+    _fill(cfg.departments, raw.get("departments"))
+    _fill(cfg.outage, raw.get("outage"))
     _fill(cfg.db, raw.get("db"))
     _fill(cfg.storage, raw.get("storage"))
     _fill(cfg.comment, raw.get("comment"))
