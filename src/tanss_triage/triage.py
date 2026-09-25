@@ -62,7 +62,7 @@ danach, mit genau diesen Feldern:
 
 {
   "betreff": "Ticketbetreff nach den Betreff-Regeln unten",
-  "beschreibung": "strukturierte Zusammenfassung: 1-3 Sätze Anliegen, danach falls vorhanden Zeilen wie 'Anrufer: ...', 'Rückruf unter: ...', 'Dringlichkeit: ...'. Der Name des Anrufers gehört hierher, auch wenn er im Betreff entfällt. Nur Informationen aus Transkript/Metadaten, nichts erfinden.",
+  "beschreibung": "strukturierte Zusammenfassung: 1-3 Sätze Anliegen, danach falls vorhanden Zeilen wie 'Anrufer: ...', 'Rückruf unter: ...', 'Dringlichkeit: ...'. Der Name des Anrufers gehört hierher, auch wenn er im Betreff entfällt. Schreibe 'Rückruf unter: ...' nur hinein, wenn der Anrufer selbst die Nummer nennt. Nur Informationen aus Transkript/Metadaten, nichts erfinden. Füge zwischen Anliegen und den Zeilen danach eine Leerzeile ein, sofern du Zeilen danach schreibst.",
   "melder_id": null,
   "praxisausfall": true oder false (Regel unten)
 }
