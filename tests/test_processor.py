@@ -234,7 +234,7 @@ class FakeTranscriber:
 
 
 class FakeLlm:
-    def complete(self, system, user):
+    def complete(self, system, user, schema=None):
         return ('{"betreff": "Faxversand gestört", '
                 '"beschreibung": "Fax geht nicht.\\nAnrufer: Frau Duft", '
                 '"melder_id": 7}')

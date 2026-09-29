@@ -52,14 +52,18 @@ class WhisperConfig:
 @dataclass
 class LlmConfig:
     provider: str = ""            # "" = Automatik (anthropic bei Key, sonst none)
-    model: str = "claude-sonnet-5"
+    model: str = "claude-sonnet-5-5"
     base_url: str = ""
-    max_tokens: int = 1500
+    # Obergrenze, keine Vorgabe: das Denken des Modells zählt mit hinein.
+    max_tokens: int = 16000
     timeout: float = 120.0
     api_key: str = ""             # kommt aus der Umgebung, nicht aus dem TOML
     # Zusätzliche Hausabkürzungen für den Betreff; sie ergänzen die
     # eingebaute Liste (triage.DEFAULT_ABBREVIATIONS), ersetzen sie nicht.
     subject_abbreviations_extra: list = field(default_factory=list)
+    # Ersatzmodell, wenn Claude ablehnt (nur anthropic): "default" = von
+    # Anthropic nach Ablehnungsgrund gewählt, "" = aus.
+    fallbacks: str = "default"
 
     def resolved_provider(self):
         """Automatik auflösen: expliziter Wert gewinnt, sonst nach Key."""

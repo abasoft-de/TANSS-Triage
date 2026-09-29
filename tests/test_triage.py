@@ -97,7 +97,7 @@ class _FakeLlm:
         self.answer = answer
         self.seen = None
 
-    def complete(self, system, user):
+    def complete(self, system, user, schema=None):
         self.seen = (system, user)
         return self.answer
 

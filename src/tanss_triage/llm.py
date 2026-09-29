@@ -10,7 +10,11 @@ Beschreibung: Abstraktion über das Sprachmodell. Zwei Provider: die
               keine weitere Abhängigkeit nötig ist). build_llm() liefert
               None, wenn kein Provider konfiguriert ist - der Aufrufer lässt
               den LLM-Schritt dann einfach aus.
-Letzte Änderung: 2026-09-10
+              Mit JSON-Schema erzwingt die Claude-API eine Antwort, die genau
+              diesem Schema folgt (Structured Outputs, output_config.format).
+              Lehnt das Modell ab, springt serverseitig ein Ersatzmodell ein
+              ([llm] fallbacks).
+Letzte Änderung: 2026-09-29
 """
 
 import logging
@@ -24,6 +28,10 @@ class LlmError(RuntimeError):
     """Der LLM-Aufruf ist fehlgeschlagen (Netz, Quota, Serverfehler)."""
 
 
+# Beta-Header für fallbacks = "default" (Ersatzmodell nach Ablehnungsgrund).
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+
 class AnthropicLlm:
     """Claude über die offizielle API."""
 
@@ -33,16 +41,36 @@ class AnthropicLlm:
             api_key=cfg.api_key)              # nicht brauchen
         self._cfg = cfg
 
-    def complete(self, system, user):
+    def complete(self, system, user, schema=None):
+        """Antworttext; mit schema garantiert gültiges JSON nach Schema."""
+        request = {
+            "model": self._cfg.model,
+            "max_tokens": self._cfg.max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+            "timeout": self._cfg.timeout,
+        }
+        if schema:
+            request["output_config"] = {
+                "format": {"type": "json_schema", "schema": schema}}
         try:
-            response = self._client.messages.create(
-                model=self._cfg.model,
-                max_tokens=self._cfg.max_tokens,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-                timeout=self._cfg.timeout)
+            if self._cfg.fallbacks:
+                response = self._client.beta.messages.create(
+                    betas=[FALLBACK_BETA], fallbacks=self._cfg.fallbacks,
+                    **request)
+            else:
+                response = self._client.messages.create(**request)
         except Exception as error:            # SDK wirft eigene Hierarchie
             raise LlmError("Claude-Aufruf fehlgeschlagen: %s" % error) from error
+        # Bei Ablehnung oder abgeschnittener Antwort gilt das Schema nicht -
+        # dann lieber kein Update als ein halbes.
+        if response.stop_reason == "refusal":
+            details = getattr(response, "stop_details", None)
+            raise LlmError("Claude hat die Anfrage abgelehnt (Kategorie %s)."
+                           % (getattr(details, "category", None) or "unbekannt"))
+        if response.stop_reason == "max_tokens":
+            raise LlmError("Antwort bei max_tokens = %d abgeschnitten - "
+                           "[llm] max_tokens erhöhen." % self._cfg.max_tokens)
         parts = [block.text for block in response.content
                  if getattr(block, "type", "") == "text"]
         return "".join(parts).strip()
@@ -55,7 +83,10 @@ class OpenAiCompatibleLlm:
         self._cfg = cfg
         self._url = cfg.base_url.rstrip("/") + "/chat/completions"
 
-    def complete(self, system, user):
+    def complete(self, system, user, schema=None):
+        # schema wird nicht mitgeschickt: lokale Endpunkte unterstützen
+        # Structured Outputs sehr unterschiedlich. Der Prompt verlangt JSON,
+        # parse_triage_json fängt den Rest ab.
         headers = {"Content-Type": "application/json"}
         if self._cfg.api_key:
             headers["Authorization"] = "Bearer " + self._cfg.api_key

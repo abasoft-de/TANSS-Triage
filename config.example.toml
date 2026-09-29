@@ -34,11 +34,13 @@ download_root = ""
 # sonst "none" (dann gibt es nur Transkript-Kommentar und Rufnummern-
 # Zuordnung, kein Betreff/Beschreibung-Rewrite).
 provider = ""
-model = "claude-sonnet-5"
+model = "claude-sonnet-5-5"
 # Nur für openai_compatible: Basis-URL des Endpunkts,
 # z. B. "http://localhost:11434/v1" für Ollama.
 base_url = ""
-max_tokens = 1500
+# Obergrenze der Antwort; das Denken des Modells zählt mit hinein. Zu knapp
+# heißt: abgeschnittene Antwort, kein Update.
+max_tokens = 16000
 timeout = 120
 # Zusätzliche Hausabkürzungen, die das LLM im Betreff verwenden soll (die
 # eingebaute Liste - EVA, KIM, ePA, eRP, KT, HZV, PAL, RR ... - steht in
@@ -46,6 +48,10 @@ timeout = 120
 # neu ist). Whisper schreibt aus, was gesprochen wird; der Betreff soll das
 # Kürzel tragen, das die Hotline auch von Hand notiert.
 subject_abbreviations_extra = []   # z. B. ["Hybrid-DRG", "eAB", "DMP"]
+# Nur anthropic: Lehnt Claude eine Anfrage ab, rechnet serverseitig ein
+# Ersatzmodell weiter. "default" = Anthropic wählt es nach Ablehnungsgrund,
+# "" = aus (dann bleibt das Ticket bei einer Ablehnung unverändert).
+fallbacks = "default"
 
 [starface]
 # Eingehende Mails dieser Absender machen ein Ticket zum Starface-Ticket

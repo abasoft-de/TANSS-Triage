@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tanss-triage"
-version = "0.7.0"
+version = "0.8.0"
 description = "Transkribiert Sprachnachrichten aus TANSS-Tickets (lokales Whisper) und bereitet Starface-Tickets per LLM auf"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ authors = [{ name = "abasoft GmbH" }]
 dependencies = [
     "requests>=2.31",
     "python-dotenv>=1.0",
-    "anthropic>=0.40",
+    "anthropic>=1.4,<2",
     "faster-whisper>=1.1",
     "pymysql>=1.1",
     "tomli>=2.0; python_version < '3.11'",

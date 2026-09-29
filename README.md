@@ -47,7 +47,9 @@ Für jedes gefundene Ticket:
      100 Zeichen - die Feldlänge von `bug.ueberschrift`); weitere Kürzel
      kommen über `[llm] subject_abbreviations_extra` dazu. Eine
      Sprachnachricht ohne Inhalt bekommt den Betreff "Sprachnachricht ohne
-     Inhalt" ohne LLM-Aufruf.
+     Inhalt" ohne LLM-Aufruf. Modell ist Claude Sonnet 5.5; die Antwort
+     erzwingt die API per JSON-Schema (Structured Outputs), lehnt Claude ab,
+     rechnet serverseitig ein Ersatzmodell weiter (`[llm] fallbacks`).
    - **Abteilung**: jedes Starface-Ticket landet bei der HLE, solange es
      noch keiner Abteilung zugewiesen ist (`[departments]`).
    - **Praxisausfall** (erkennt das LLM: Server weg, Praxis kann nicht

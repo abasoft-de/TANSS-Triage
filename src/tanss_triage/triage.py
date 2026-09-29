@@ -12,9 +12,10 @@ Beschreibung: Baut aus dem Transkript einer Sprachnachricht per LLM einen
               identifizierten Firma, darf es den Melder vorschlagen (nur IDs
               aus der Liste werden akzeptiert). Außerdem kennzeichnet es
               Praxisausfälle (Server weg, Praxis kann nicht arbeiten). Die
-              Antwort ist striktes JSON; was nicht parsebar ist, führt zu
-              "kein Update" statt zu einem kaputten Ticket.
-Letzte Änderung: 2026-09-23
+              Antwort ist striktes JSON - bei Claude per Schema erzwungen
+              (TRIAGE_SCHEMA); was nicht parsebar ist, führt zu "kein Update"
+              statt zu einem kaputten Ticket.
+Letzte Änderung: 2026-09-29
 """
 
 import json
@@ -113,6 +114,22 @@ Praxisausfall - gesondert kennzeichnen:
 """
 
 
+# Antwortformat für Structured Outputs: Claude kann nur JSON liefern, das
+# genau diesem Schema folgt - keine Code-Zäune, kein Erklärtext, keine
+# fehlenden oder zusätzlichen Felder. Die Inhaltsregeln stehen im Prompt.
+TRIAGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "betreff": {"type": "string"},
+        "beschreibung": {"type": "string"},
+        "melder_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        "praxisausfall": {"type": "boolean"},
+    },
+    "required": ["betreff", "beschreibung", "melder_id", "praxisausfall"],
+    "additionalProperties": False,
+}
+
+
 @dataclass
 class TriageResult:
     betreff: str
@@ -180,8 +197,9 @@ def shorten_subject(text, limit=MAX_SUBJECT_LENGTH):
 def parse_triage_json(text):
     """Zieht das JSON-Objekt aus der LLM-Antwort und prüft die Felder.
 
-    Modelle verpacken JSON gern in Code-Zäune oder hängen Sätze an -
-    darum wird das erste {...}-Paar gesucht statt blind json.loads zu rufen.
+    Claude liefert per Schema reines JSON; lokale Modelle verpacken es gern
+    in Code-Zäune oder hängen Sätze an - darum wird das erste {...}-Paar
+    gesucht statt blind json.loads zu rufen.
     Liefert None, wenn nichts Brauchbares zu holen ist.
     """
     if not text:
@@ -233,7 +251,8 @@ def run_triage(llm, transcript, caller_number="", voicemail_box="",
     user = build_user_prompt(transcript, caller_number, voicemail_box,
                              contacts)
     try:
-        answer = llm.complete(build_system_prompt(extra_abbreviations), user)
+        answer = llm.complete(build_system_prompt(extra_abbreviations), user,
+                              schema=TRIAGE_SCHEMA)
     except LlmError as error:
         LOG.warning("LLM-Aufruf fehlgeschlagen: %s", error)
         return None

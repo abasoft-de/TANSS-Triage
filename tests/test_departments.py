@@ -32,7 +32,7 @@ class _Llm:
     def __init__(self, answer):
         self.answer = answer
 
-    def complete(self, system, user):
+    def complete(self, system, user, schema=None):
         return self.answer
 
 

@@ -5,6 +5,37 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.8.0] - 2026-09-29
+
+### Geändert
+
+- **Modell Claude Sonnet 5.5** (`claude-sonnet-5-5`) statt Sonnet 5 - gleicher
+  Preis, gleicher Prompt.
+- **Structured Outputs**: Die Claude-API bekommt das Antwortformat als
+  JSON-Schema (`output_config.format`, `triage.TRIAGE_SCHEMA`) und kann nur
+  noch gültiges JSON mit genau den Feldern betreff, beschreibung, melder_id
+  und praxisausfall liefern - kein Code-Zaun, kein Erklärtext, kein
+  fehlendes Feld. Der tolerante Parser bleibt für lokale Modelle
+  (`openai_compatible`), denen kein Schema mitgegeben wird.
+- `[llm] max_tokens` von 1500 auf 16000: Das Denken des Modells zählt mit
+  hinein, eine abgeschnittene Antwort wäre kein gültiges JSON. Es ist nur
+  eine Obergrenze, abgerechnet wird der tatsächliche Verbrauch. **Steht in
+  der config.toml auf dem Server noch `max_tokens = 1500`, den Eintrag
+  anheben oder löschen.**
+- Abhängigkeit `anthropic>=1.4,<2` (vorher `>=0.40`), damit `deploy.ps1`
+  das SDK auf dem Server auf einen Stand mit Structured Outputs und
+  Fallbacks hebt.
+
+### Hinzugefügt
+
+- **Ersatzmodell bei Ablehnung**: `[llm] fallbacks = "default"` - lehnt
+  Claude eine Anfrage ab, rechnet serverseitig das von Anthropic nach
+  Ablehnungsgrund gewählte Modell weiter (Beta
+  `server-side-fallback-2026-07-01`). `""` schaltet es ab.
+- Eine Ablehnung (`stop_reason` refusal, samt Kategorie) oder eine bei
+  `max_tokens` abgeschnittene Antwort landet als eigene Warnung im Log; das
+  Ticket bleibt dann unverändert.
+
 ## [0.7.0] - 2026-09-23
 
 ### Hinzugefügt
