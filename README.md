@@ -3,7 +3,8 @@
 Transkribiert Sprachnachrichten aus TANSS-Tickets mit lokalem Whisper und
 bereitet Starface-Voicemail-Tickets automatisch auf: Transkript als
 Kommentar, Betreff und Beschreibung per LLM, Firma und Melder per
-Rufnummernvergleich.
+Rufnummernvergleich. Außerdem markiert es **potenzielle Ticket-Duplikate**
+beim selben Kunden.
 
 Version: siehe [VERSION](VERSION) - Änderungen: [CHANGELOG.md](CHANGELOG.md)
 
@@ -69,6 +70,79 @@ gelöscht werden, sonst würden bereits kommentierte Tickets bei einem
 erneuten Anstoß noch einmal kommentiert. (Kommentar-Marker aus Versionen
 bis 0.3.1 werden in der Ticket-Historie weiterhin erkannt.)
 
+## Duplikat-Erkennung
+
+Kunden melden denselben Vorfall oft mehrfach - als Sprachnachricht, als
+Mail und als Anruf. TANSS-Triage prüft deshalb **jedes Ticket, sobald es
+erstmals bei einer Kundenfirma liegt**, gegen die **offenen Tickets
+desselben Kunden** (`[duplicates]`, braucht ein LLM - ohne ruht die
+Erkennung).
+
+Der Poller erkennt den Moment im selben Takt über zwei weitere Cursor:
+neue Tickets, die schon bei einer Firma liegen (von Kolleg*innen direkt
+beim Kunden angelegt, Tabelle `bug`), und Firmenzuweisungen aus dem
+TANSS-Änderungsprotokoll (`entity_changes`, Feld `companyId` - so kommen
+Mail-Tickets, die mit Firma 0 entstehen, und die von TANSS-Triage selbst
+zugeordneten Starface-Tickets). Geprüft wird in drei Stufen:
+
+0. **Ohne LLM-Aufruf**, beides gilt direkt als Duplikat:
+   - Das neue Ticket **nennt die Nummer** eines offenen Tickets desselben
+     Kunden, im Betreff oder im (zitierten) Text - typisch für Antworten
+     und Nachfragen ("[abasoft-Ticket #257317]", "Ticketnummer 251579").
+     Es zählt nur eine für sich stehende Zahl ab fünf Stellen, kein Teil
+     einer längeren Ruf- oder Seriennummer.
+   - **Exakt gleicher Betreff** (Leerraum und Groß-/Kleinschreibung egal) -
+     typisch bei mehreren Anrufen, für die das LLM denselben Betreff
+     vergibt.
+
+   Genannte Tickets stehen im Kommentar vor denen mit gleichem Betreff.
+1. **Sichtung**: Das LLM bekommt das neue Ticket und die Liste der offenen
+   Tickets (Betreff, Anlagedatum, Status, Beschreibungsanfang) und nennt
+   sichere Duplikate und unklare Kandidaten.
+2. **Nachprüfung** nur der unklaren: Beschreibung und Leistungen - bei
+   vielen Leistungen die ersten und die letzten paar - entscheiden.
+
+Bei Verdacht bekommt das **neue** Ticket den Tag "Prüfen! pot. Duplikat"
+und einen internen Kommentar. Der Kommentartitel nennt das erste
+Duplikat, der Text dessen Betreff und Nummer; weitere Treffer (insgesamt
+höchstens drei) folgen jeweils nach einer Leerzeile:
+
+```
+Titel: Potenzielles Duplikat von Ticket #1234
+Text:  "Titel des anderen Tickets" #1234
+
+       Potenzielles Duplikat von Ticket #2345
+       "Titel des anderen möglichen Duplikat-Tickets" #2345
+```
+
+Was man wissen sollte:
+
+- Jedes Ticket wird **einmal** geprüft (State-Schlüssel `dup:<Ticket>`);
+  ein späterer Firmenwechsel löst keine zweite Prüfung aus.
+- Tickets der eigenen Firma (`exclude_company_ids`, Default ABASTU) werden
+  nicht geprüft. Wandert ein solches Ticket später zu einem Kunden, wird
+  es dann geprüft.
+- Trägt ein Ticket noch den generischen Starface-Betreff, **wartet die
+  Prüfung auf die Transkription** und läuft direkt im Anschluss.
+  "Sprachnachricht ohne Inhalt" wird weder geprüft noch als Vergleich
+  herangezogen.
+- Hat der Kunde kein weiteres offenes Ticket, gibt es keinen LLM-Aufruf.
+- Scheitert eine Prüfung (LLM oder Datenbank nicht erreichbar), wird sie
+  nach zehn Minuten wiederholt, insgesamt höchstens dreimal.
+- **Der API-Benutzer braucht das Recht "Ticket-System: Tickets anzeigen
+  (alle Abteilungen)"** - anders als bei den Voicemail-Tickets liegen die
+  geprüften Tickets fast immer schon bei einer Abteilung. Ohne das Recht
+  verweigert TANSS das Ticket mit HTTP 403
+  (`FORBIDDEN_NO_ENTITY_ACCESS`); die Prüfung endet dann vor dem ersten
+  LLM-Aufruf mit einer Warnung im Log und wird nicht wiederholt. Nach dem
+  Setzen des Rechts lässt sich ein solches Ticket mit `--duplicate <ID>`
+  nachprüfen.
+- Beim ersten Start mit dieser Funktion werden nur die Cursor gesetzt -
+  Alttickets bleiben unberührt.
+- Grenzen: Wiederkehrende Automatik-Mails mit identischem Betreff gelten
+  als Duplikat, solange das Vorgänger-Ticket offen ist; Zweigstellen
+  eines Kunden werden nicht übergreifend verglichen.
+
 ## Einrichtung
 
 ### 1. Abhängigkeiten
@@ -111,7 +185,11 @@ cp config.example.toml config.toml   # Verhalten anpassen (optional)
   Tickets verborgen, die schon einer Abteilung zugewiesen sind.
 - Für den Mehrfach-Firmen-Check liest das Programm `~/.my.cnf` (dieselbe
   Datei wie der MCP-Server, User `tanssuser`, read-only). Fehlt sie, werden
-  Ansprechpartner-Treffer sicherheitshalber nicht zugeordnet.
+  Ansprechpartner-Treffer sicherheitshalber nicht zugeordnet. Denselben
+  Zugang nutzt die Duplikat-Erkennung (Tabellen `bug`, `bug_status`,
+  `entity_changes`, `leistungen`); für Tag und Kommentar reichen die
+  Rechte, die der API-Benutzer für die Transkript-Kommentare und den
+  Tag DRINGEND schon hat.
 
 Beim ersten Lauf lädt faster-whisper das Modell (`large-v3` ~= 3 GB) in den
 Hugging-Face-Cache (`download_root` in der config.toml verlegt ihn).
@@ -135,18 +213,25 @@ Ausrollen von der Windows-Entwicklung aus: `.\deploy.ps1 -Server <host>`
 python -m tanss_triage                     # Dauerbetrieb: Polling + Worker
 python -m tanss_triage --ticket 250312 --dry-run   # ein Ticket testweise (schreibt nichts)
 python -m tanss_triage --ticket 250312    # ein Ticket scharf nachziehen
+python -m tanss_triage --duplicate 260148 --dry-run   # Duplikatprüfung testweise (schreibt nichts)
+python -m tanss_triage --duplicate 260148  # Duplikatprüfung scharf, auch wenn schon geprüft
 python -m tanss_triage --identify 07432994360      # Rufnummernauflösung ansehen
 python -m tanss_triage --mail 356324       # Mail samt Anhängen zeigen (Diagnose)
 ```
 
 **Empfohlener Ersttest** auf dem Server: ein bekanntes Voicemail-Ticket mit
 `--ticket <id> --dry-run` durchspielen und das geplante Ergebnis im Log
-ansehen, dann ohne `--dry-run` scharf schalten.
+ansehen, dann ohne `--dry-run` scharf schalten. Für die Duplikat-Erkennung
+genauso: `--duplicate <id> --dry-run` mit einem Ticket, zu dem beim selben
+Kunden ein offenes Geschwisterticket existiert - das Log zeigt die
+Entscheidung und den Kommentartext (Details der Sichtung mit
+`[logging] level = "DEBUG"`).
 
 Downtime holt der Dienst selbst nach: die Poll-Cursor stehen in der
 State-DB, nach einem Neustart wird ab dem letzten Stand weitergemacht.
 Nur beim allerersten Start (ohne State-DB) greift stattdessen der
-konfigurierte Rückblick (`initial_lookback_minutes`).
+konfigurierte Rückblick (`initial_lookback_minutes`); die Cursor der
+Duplikat-Erkennung werden beim ersten Lauf nur gesetzt.
 
 ## Entwicklung
 
@@ -155,13 +240,17 @@ konfigurierte Rückblick (`initial_lookback_minutes`).
 ```
 
 Struktur: `poller.py` fragt die Datenbank nach neuen Sprachaufnahmen und
-füllt eine Queue, `worker.py` arbeitet sie sequenziell ab (Whisper lastet
-die CPU allein aus),
-`processor.py` orchestriert pro Ticket, `tanss_client.py` kapselt die
+nach Tickets, die erstmals bei einer Firma liegen, und füllt eine Queue
+mit Paaren (Handler, Ticket-ID); `worker.py` arbeitet sie sequenziell ab
+(Whisper lastet die CPU allein aus, und die Duplikatprüfung soll den
+fertigen Betreff sehen),
+`processor.py` orchestriert die Audio-Verarbeitung pro Ticket,
+`duplicates.py` die Duplikatprüfung, `tanss_client.py` kapselt die
 REST-API (Login-Eigenheiten: Header `apiToken`, 2-Minuten-Idle-Timeout,
-automatischer Re-Login), `assigner.py` enthält die Zuordnungsregeln,
-`triage.py`/`llm.py` den LLM-Schritt. Erweiterungen (weitere Trigger,
-weitere Aktionen) docken am Processor an.
+automatischer Re-Login), `db.py` die lesenden Datenbankabfragen,
+`assigner.py` enthält die Zuordnungsregeln, `triage.py`/`llm.py` den
+LLM-Schritt. Weitere Trigger docken am Poller an, weitere Aktionen als
+Handler in `cli.serve`.
 
 Versionierung: SemVer in [VERSION](VERSION), Änderungen in
 [CHANGELOG.md](CHANGELOG.md) nachführen.

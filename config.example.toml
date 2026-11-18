@@ -8,7 +8,8 @@
 [polling]
 # Wie oft die TANSS-Datenbank nach neuen Sprachaufnahmen gefragt wird
 # (neue Mail-Anhänge und Ticket-Dokumente, über persistierte ID-Cursor -
-# ein Neustart holt verpasste Zeit automatisch nach).
+# ein Neustart holt verpasste Zeit automatisch nach). Im selben Takt
+# laufen die Abfragen der Duplikat-Erkennung ([duplicates]).
 interval_seconds = 60
 # Rückblick beim allerersten Start, wenn noch kein Cursor gespeichert ist.
 initial_lookback_minutes = 60
@@ -86,9 +87,38 @@ title_prefix = "SERVERAUSFALL !! "
 tag_id = 53                       # tag.id von "DRINGEND"; 0 = kein Tag
 tag_name = "DRINGEND"             # nur fürs Log
 
+[duplicates]
+# Duplikat-Erkennung (braucht ein LLM, sonst ruht sie): Ein Ticket wird
+# geprüft, sobald es erstmals bei einer Kundenfirma liegt - gegen die offenen
+# Tickets desselben Kunden. Erst ohne LLM (das Ticket nennt die Nummer eines
+# offenen Tickets oder trägt exakt denselben Betreff), dann
+# sichtet das LLM Betreffs und Beschreibungsanfänge; nur für unklare
+# Kandidaten bekommt es Beschreibung und Leistungen. Bei Verdacht: Tag und
+# ein Kommentar mit dem Titel "Potenzielles Duplikat von Ticket #1234" und
+# dem Text '"Titel des anderen Tickets" #1234'.
+enabled = true
+tag_id = 181                        # tag.id von "Prüfen! pot. Duplikat"; 0 = kein Tag
+tag_name = "Prüfen! pot. Duplikat"  # nur fürs Log
+# Firmen, deren Tickets nicht geprüft werden (100000 = ABASTU, die eigene
+# Firma mit Newslettern, Lieferantenmails und Internem).
+exclude_company_ids = [100000]
+# Obergrenze der offenen Tickets, die zum Vergleich herangezogen werden
+# (neueste zuerst).
+max_candidates = 80
+# So viele Duplikate nennt der Kommentar höchstens.
+max_matches = 3
+# So viele unklare Kandidaten werden mit Beschreibung und Leistungen
+# nachgeprüft.
+max_detail_candidates = 5
+# Leistungen je Ticket in der Nachprüfung: bis head + tail Stück alle, sonst
+# die ersten head und die letzten tail.
+services_head = 3
+services_tail = 3
+
 [db]
 # Read-only-Zugriff auf die TANSS-MariaDB für den Mehrfach-Firmen-Check
-# (mitarbeiter_firmen) - dieselbe Zugangsdatei wie der MCP-Server.
+# (mitarbeiter_firmen) und die Duplikat-Erkennung (bug, entity_changes,
+# leistungen) - dieselbe Zugangsdatei wie der MCP-Server.
 # Leer lassen, um den Check abzuschalten (dann werden Mitarbeiter-Treffer
 # sicherheitshalber NICHT zugeordnet).
 defaults_file = "~/.my.cnf"

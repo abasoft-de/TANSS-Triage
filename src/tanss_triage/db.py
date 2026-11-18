@@ -9,8 +9,11 @@ Beschreibung: Read-only-Blicke in die TANSS-MariaDB (Zugangsdaten aus
               mails_attachments, denn Starface hängt die Voicemail an die
               Mail, nicht ans Ticket - und die Dateien liegen als
               <verzeichnis>/<filenameDB> im Storage des TANSS-Servers,
-              auf dem dieses Programm läuft.
-Letzte Änderung: 2026-09-15
+              auf dem dieses Programm läuft. Dazu die Abfragen der
+              Duplikat-Erkennung: neue Tickets und Firmenzuweisungen
+              (Änderungsprotokoll entity_changes) als Trigger, die offenen
+              Tickets eines Kunden und ihre Leistungen als Vergleichsdaten.
+Letzte Änderung: 2026-11-16
 """
 
 import logging
@@ -18,6 +21,11 @@ import os
 import re
 
 LOG = logging.getLogger("tanss_triage.db")
+
+# bug_status.ID von "erledigt" - alle anderen Status sind offene Zustände.
+STATUS_DONE = 1000
+# link_type_id eines Tickets im Änderungsprotokoll (entity_changes).
+LINK_TYPE_TICKET = 11
 
 
 def _query(db_cfg, sql, params):
@@ -129,6 +137,114 @@ def backlog_audio_tickets(db_cfg, lookback_minutes, extensions):
           AND COALESCE(b.geloescht, 0) = 0
         """ % placeholders,
         (*[e.lower() for e in extensions], int(lookback_minutes) * 60))
+
+
+# -- Duplikat-Erkennung: Trigger und Vergleichsdaten
+
+def max_bug_id(db_cfg):
+    """Höchste Ticket-ID; None, wenn DB nicht verfügbar."""
+    rows = _query(db_cfg, "SELECT COALESCE(MAX(ID), 0) AS m FROM bug", ())
+    return rows[0]["m"] if rows is not None else None
+
+
+def company_tickets_between(db_cfg, since_id, until_id):
+    """Neue Tickets im ID-Fenster, die schon bei einer Firma liegen.
+
+    Das sind die von Kolleg*innen direkt beim Kunden angelegten Tickets -
+    für sie schreibt TANSS keinen Änderungseintrag. Mail-Tickets entstehen
+    mit firmenID 0 und kommen später über company_changes_between.
+    """
+    return _query(db_cfg, """
+        SELECT ID AS ticket_id FROM bug
+        WHERE ID > %s AND ID <= %s AND firmenID <> 0
+          AND COALESCE(geloescht, 0) = 0
+        """, (since_id, until_id))
+
+
+def max_entity_change_id(db_cfg):
+    """Höchste ID im Änderungsprotokoll; None, wenn DB nicht verfügbar."""
+    rows = _query(db_cfg, "SELECT COALESCE(MAX(id), 0) AS m "
+                          "FROM entity_changes", ())
+    return rows[0]["m"] if rows is not None else None
+
+
+def company_changes_between(db_cfg, since_id, until_id):
+    """Tickets, deren Firma sich im ID-Fenster des Protokolls geändert hat.
+
+    entity_changes hält je Änderung ein JSON wie
+    {"changes":[{"field":"companyId","o":"0","n":"387"}, ...]}. Ob es die
+    erste Zuweisung war, entscheidet nicht diese Abfrage, sondern die
+    Duplikatprüfung über ihren State - darum genügt der Feldname. Das
+    Muster reist als Parameter, damit seine Prozentzeichen nicht mit den
+    Platzhaltern des Treibers kollidieren.
+    """
+    return _query(db_cfg, """
+        SELECT DISTINCT link_id AS ticket_id FROM entity_changes
+        WHERE id > %s AND id <= %s AND link_type_id = %s
+          AND changes LIKE %s
+        """, (since_id, until_id, LINK_TYPE_TICKET,
+              '%"field":"companyId"%'))
+
+
+def fetch_ticket(db_cfg, ticket_id, content_limit=4000):
+    """Die Vergleichsdaten eines Tickets.
+
+    Liefert ein Dict (id, company_id, title, content, created, deleted),
+    ein leeres Dict, wenn es das Ticket nicht (mehr) gibt - zusammengeführte
+    Tickets verschwinden ganz aus der Tabelle -, oder None, wenn die
+    Datenbank nicht verfügbar ist. Die Beschreibung wird schon hier
+    gekappt: einzelne Mail-Tickets tragen mehrere hundert Kilobyte.
+    """
+    rows = _query(db_cfg, """
+        SELECT ID AS id, firmenID AS company_id, ueberschrift AS title,
+               LEFT(inhalt, %s) AS content, erstelltDatum AS created,
+               COALESCE(geloescht, 0) AS deleted
+        FROM bug WHERE ID = %s
+        """, (int(content_limit), ticket_id))
+    if rows is None:
+        return None
+    return rows[0] if rows else {}
+
+
+def open_company_tickets(db_cfg, company_id, exclude_id, limit=80,
+                         content_limit=2200):
+    """Die offenen Tickets einer Firma, neueste zuerst - ohne exclude_id.
+
+    Offen heißt: nicht auf "erledigt" (bug.erledigtDatum ist in dieser
+    Installation nicht gepflegt, es zählt allein der Status). Die
+    Beschreibung kommt gekappt mit; wie viel davon ins Prompt geht,
+    entscheidet die Duplikatprüfung je Stufe.
+    """
+    return _query(db_cfg, """
+        SELECT b.ID AS id, b.firmenID AS company_id, b.ueberschrift AS title,
+               LEFT(b.inhalt, %s) AS content, b.erstelltDatum AS created,
+               s.name AS status
+        FROM bug b
+        LEFT JOIN bug_status s ON s.ID = b.statusID
+        WHERE b.firmenID = %s AND b.statusID <> %s AND b.ID <> %s
+          AND COALESCE(b.geloescht, 0) = 0
+        ORDER BY b.ID DESC LIMIT %s
+        """, (int(content_limit), company_id, STATUS_DONE, exclude_id,
+              int(limit)))
+
+
+def ticket_services(db_cfg, ticket_ids, text_limit=600):
+    """Die Leistungen mehrerer Tickets in zeitlicher Reihenfolge.
+
+    Liefert Zeilen (ticket_id, date, text); welche davon ins Prompt
+    kommen (die ersten und letzten paar), entscheidet der Aufrufer.
+    """
+    ticket_ids = [int(ticket_id) for ticket_id in ticket_ids or []]
+    if not ticket_ids:
+        return []
+    placeholders = ", ".join(["%s"] * len(ticket_ids))
+    return _query(db_cfg, """
+        SELECT bugID AS ticket_id, datum AS date,
+               LEFT(text, %%s) AS text
+        FROM leistungen
+        WHERE bugID IN (%s) AND COALESCE(geloescht, 0) = 0
+        ORDER BY bugID, datum, ID
+        """ % placeholders, (int(text_limit), *ticket_ids))
 
 
 def phone_number_roles(db_cfg, number, company_id):

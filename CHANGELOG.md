@@ -5,6 +5,55 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.9.0] - 2026-11-16
+
+### Hinzugefügt
+
+- **Erkennung potenzieller Ticket-Duplikate** (`duplicates.py`,
+  `[duplicates]`): Ein Ticket wird geprüft, sobald es erstmals bei einer
+  Kundenfirma liegt - gegen die offenen Tickets desselben Kunden. Bei
+  Verdacht bekommt das neue Ticket den Tag "Prüfen! pot. Duplikat"
+  (`tag_id`, Default 181) und einen internen Kommentar mit dem Titel
+  `Potenzielles Duplikat von Ticket #1234` und dem Text
+  `"Titel des anderen Tickets" #1234`; weitere Treffer folgen im Text
+  jeweils nach einer Leerzeile mit derselben Überschrift (höchstens
+  `max_matches` Treffer, Default 3).
+  - Drei Stufen: ohne LLM-Aufruf, wenn das neue Ticket die Nummer eines
+    offenen Tickets desselben Kunden nennt (Betreff oder Text, für sich
+    stehende Zahl ab fünf Stellen) oder exakt denselben Betreff trägt;
+    Sichtung von Betreffs und Beschreibungsanfängen per LLM; Nachprüfung nur der
+    unklaren Kandidaten mit Beschreibung und Leistungen (bis
+    `services_head` + `services_tail` alle, sonst die ersten und die
+    letzten). Antworten per JSON-Schema, nur vorgelegte Ticketnummern
+    zählen.
+  - Trigger im bestehenden Poll-Takt über zwei neue Cursor: neue Tickets
+    mit Firma (`bug`) und Firmenzuweisungen aus dem Änderungsprotokoll
+    (`entity_changes`, Feld `companyId`). Der erste Lauf setzt nur die
+    Cursor - ein Deployment markiert keine Alttickets.
+  - Jedes Ticket wird einmal geprüft (State `dup:<Ticket>`). Tickets der
+    eigenen Firma (`exclude_company_ids`, Default ABASTU) und Tickets ohne
+    Firma bleiben offen und werden geprüft, sobald sie bei einem Kunden
+    liegen. Bei noch generischem Starface-Betreff wartet die Prüfung auf
+    die Transkription und läuft direkt danach.
+  - Fehlgeschlagene Prüfungen (LLM, Datenbank) werden nach zehn Minuten
+    wiederholt, höchstens dreimal.
+  - Verweigert TANSS dem API-Benutzer das Ticket (HTTP 403, etwa weil ihm
+    das Recht "Tickets anzeigen (alle Abteilungen)" fehlt und das Ticket
+    bei einer Abteilung liegt), endet die Prüfung vor dem ersten LLM-Aufruf
+    mit einer Warnung und wird nicht wiederholt.
+  - Ohne LLM ruht die Erkennung.
+- Einzellauf `--duplicate <ID>` (mit `--dry-run` kombinierbar) für Test
+  und Diagnose; prüft auch ein schon geprüftes Ticket.
+
+### Geändert
+
+- Die Worker-Queue trägt Paare (Handler, Ticket-ID); Audio-Verarbeitung und
+  Duplikatprüfung teilen sich die Queue und laufen in ihrer Reihenfolge.
+- Poller: Scheitert eine einzelne Abfrage, werden die Funde der übrigen
+  trotzdem eingereiht. Bisher gingen sie verloren, obwohl deren Cursor
+  schon weitergerückt waren.
+- Die Startzeile im Log nennt den Zustand der Duplikat-Erkennung.
+
 ## [0.8.0] - 2026-09-29
 
 ### Geändert

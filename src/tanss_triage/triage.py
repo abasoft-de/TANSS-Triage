@@ -15,7 +15,7 @@ Beschreibung: Baut aus dem Transkript einer Sprachnachricht per LLM einen
               Antwort ist striktes JSON - bei Claude per Schema erzwungen
               (TRIAGE_SCHEMA); was nicht parsebar ist, führt zu "kein Update"
               statt zu einem kaputten Ticket.
-Letzte Änderung: 2026-09-29
+Letzte Änderung: 2026-11-16
 """
 
 import json
@@ -194,13 +194,12 @@ def shorten_subject(text, limit=MAX_SUBJECT_LENGTH):
     return cut.rstrip(" ,;:.+/-<>") + " …"
 
 
-def parse_triage_json(text):
-    """Zieht das JSON-Objekt aus der LLM-Antwort und prüft die Felder.
+def extract_json_object(text):
+    """Zieht das JSON-Objekt aus einer LLM-Antwort; None, wenn keins da ist.
 
     Claude liefert per Schema reines JSON; lokale Modelle verpacken es gern
     in Code-Zäune oder hängen Sätze an - darum wird das erste {...}-Paar
     gesucht statt blind json.loads zu rufen.
-    Liefert None, wenn nichts Brauchbares zu holen ist.
     """
     if not text:
         return None
@@ -211,7 +210,16 @@ def parse_triage_json(text):
         data = json.loads(match.group(0))
     except json.JSONDecodeError:
         return None
-    if not isinstance(data, dict):
+    return data if isinstance(data, dict) else None
+
+
+def parse_triage_json(text):
+    """Zieht das JSON-Objekt aus der LLM-Antwort und prüft die Felder.
+
+    Liefert None, wenn nichts Brauchbares zu holen ist.
+    """
+    data = extract_json_object(text)
+    if data is None:
         return None
     betreff = str(data.get("betreff") or "").strip()
     beschreibung = str(data.get("beschreibung") or "").strip()
