@@ -1,6 +1,7 @@
 """
 Usage: python -m tanss_triage                        # Dauerbetrieb (Polling)
        python -m tanss_triage --ticket 250312 --dry-run
+       python -m tanss_triage --duplicate 260148 --dry-run
        python -m tanss_triage --identify 07432994360
        python -m tanss_triage --mail 356324
 
@@ -8,11 +9,12 @@ Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: cli.py
 Beschreibung: Kommandozeile von TANSS-Triage. Ohne Optionen startet der
               Dauerbetrieb: ein Poller fragt die TANSS-Datenbank im
-              konfigurierten Intervall nach neuen Sprachaufnahmen und ein
-              Worker arbeitet sie sequenziell ab; sauberes Ende bei
-              SIGTERM/SIGINT (systemd). Die übrigen Kommandos sind
-              Einzelläufe für Test und Diagnose.
-Letzte Änderung: 2026-09-16
+              konfigurierten Intervall nach neuen Sprachaufnahmen und nach
+              Tickets, die erstmals bei einer Firma liegen
+              (Duplikat-Erkennung), und ein Worker arbeitet beides
+              sequenziell ab; sauberes Ende bei SIGTERM/SIGINT (systemd).
+              Die übrigen Kommandos sind Einzelläufe für Test und Diagnose.
+Letzte Änderung: 2026-11-16
 """
 
 import argparse
@@ -26,7 +28,9 @@ from . import __version__
 from .assigner import multi_company_checker
 from .config import load_config
 from .db import (fetch_assignment_labels, fetch_mail_attachments,
-                 phone_number_roles)
+                 fetch_ticket, open_company_tickets, phone_number_roles,
+                 ticket_services)
+from .duplicates import DuplicateChecker
 from .llm import build_llm
 from .logging_setup import setup_logging
 from .poller import Poller
@@ -53,6 +57,9 @@ def build_parser():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--ticket", type=int, metavar="ID",
                       help="nur dieses Ticket verarbeiten und beenden")
+    mode.add_argument("--duplicate", type=int, metavar="ID",
+                      help="nur dieses Ticket auf Duplikate prüfen und "
+                           "beenden (auch wenn es schon geprüft wurde)")
     mode.add_argument("--identify", metavar="NUMMER",
                       help="Rufnummer auflösen und die rohe Antwort zeigen")
     mode.add_argument("--mail", type=int, metavar="ID",
@@ -61,12 +68,12 @@ def build_parser():
     return parser
 
 
-def build_processor(cfg, client, state):
+def build_processor(cfg, client, state, llm):
     return Processor(
         cfg=cfg,
         client=client,
         transcriber=Transcriber(cfg.whisper),
-        llm=build_llm(cfg.llm),
+        llm=llm,
         state=state,
         is_multi_company=multi_company_checker(cfg.db),
         mail_attachments_lookup=lambda mail_id: fetch_mail_attachments(
@@ -77,13 +84,55 @@ def build_processor(cfg, client, state):
             cfg.db, number, company_id))
 
 
+def build_duplicate_checker(cfg, client, state, llm):
+    return DuplicateChecker(
+        cfg=cfg,
+        client=client,
+        llm=llm,
+        state=state,
+        ticket_lookup=lambda ticket_id: fetch_ticket(cfg.db, ticket_id),
+        candidates_lookup=lambda company_id, exclude_id: open_company_tickets(
+            cfg.db, company_id, exclude_id, cfg.duplicates.max_candidates),
+        services_lookup=lambda ticket_ids: ticket_services(cfg.db,
+                                                           ticket_ids))
+
+
 def serve(cfg, client):
     """Dauerbetrieb: Poll-Schleife + Worker, Ende per Signal."""
     state = State(cfg.state.db_path)
+    llm = build_llm(cfg.llm)
+    processor = build_processor(cfg, client, state, llm)
+    checker = build_duplicate_checker(cfg, client, state, llm)
+    if cfg.duplicates.enabled and not checker.active:
+        LOG.info("Duplikat-Erkennung ruht - sie braucht ein LLM.")
+
+    def handle_audio(ticket_id):
+        """Audio verarbeiten, danach dasselbe Ticket auf Duplikate prüfen.
+
+        Die Prüfung direkt im Anschluss holt nach, was zurückgestellt
+        wurde, solange das Ticket noch den generischen Starface-Betreff
+        trug; für schon geprüfte oder firmenlose Tickets ist sie ein
+        kurzer Blick in State bzw. Datenbank.
+        """
+        try:
+            processor.process_ticket(ticket_id)
+        except Exception:
+            # process_ticket fängt Dokumentfehler selbst; hier landen nur
+            # noch Ausfälle davor (Ticket nicht lesbar, API weg).
+            LOG.exception("Ticket %s konnte nicht verarbeitet werden.",
+                          ticket_id)
+        checker.check_ticket(ticket_id)
+
     work_queue = new_queue()
-    worker = Worker(work_queue, build_processor(cfg, client, state))
+    worker = Worker(work_queue)
     worker.start()
-    poller = Poller(cfg, state, work_queue.put)
+    poller = Poller(
+        cfg, state,
+        enqueue=lambda ticket_id: work_queue.put((handle_audio, ticket_id)),
+        enqueue_duplicate=(
+            (lambda ticket_id: work_queue.put((checker.check_ticket,
+                                               ticket_id)))
+            if checker.active else None))
 
     stop_event = threading.Event()
 
@@ -95,8 +144,9 @@ def serve(cfg, client):
     signal.signal(signal.SIGINT, handle_signal)
 
     LOG.info("tanss-triage %s bereit (Polling alle %ds, LLM: %s, "
-             "Whisper: %s%s).", __version__, cfg.polling.interval_seconds,
-             cfg.llm.resolved_provider(), cfg.whisper.model,
+             "Whisper: %s, Duplikat-Erkennung: %s%s).", __version__,
+             cfg.polling.interval_seconds, cfg.llm.resolved_provider(),
+             cfg.whisper.model, "an" if checker.active else "aus",
              ", dry-run" if cfg.dry_run else "")
     while not stop_event.is_set():
         try:
@@ -145,7 +195,21 @@ def main(argv=None):
 
     if arguments.ticket:
         state = State(cfg.state.db_path)
-        build_processor(cfg, client, state).process_ticket(arguments.ticket)
+        build_processor(cfg, client, state,
+                        build_llm(cfg.llm)).process_ticket(arguments.ticket)
+        return 0
+
+    if arguments.duplicate:
+        state = State(cfg.state.db_path)
+        checker = build_duplicate_checker(cfg, client, state,
+                                          build_llm(cfg.llm))
+        if not checker.active:
+            print("Die Duplikat-Erkennung ist aus: [duplicates] enabled "
+                  "ist false oder es ist kein LLM konfiguriert.",
+                  file=sys.stderr)
+            return 2
+        # force: der Einzellauf prüft auch ein schon geprüftes Ticket.
+        checker.check_ticket(arguments.duplicate, force=True)
         return 0
 
     return serve(cfg, client)

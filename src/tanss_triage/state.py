@@ -7,11 +7,12 @@ Beschreibung: Merkt sich in einer SQLite-Datei, welche Audio-Quellen schon
               verarbeitet wurden, damit doppelte Webhooks (TICKET_CREATED und
               EMAIL_RECEIVED feuern für dasselbe Ticket) und Neustarts keine
               doppelten Kommentare erzeugen. Schlüssel sind Texte wie
-              "doc:55" (Ticket-Dokument) oder "mail:356324:voicemail.wav"
-              (Mail-Anhang, der keine eigene numerische ID hat).
+              "doc:55" (Ticket-Dokument), "mail:356324:voicemail.wav"
+              (Mail-Anhang, der keine eigene numerische ID hat) oder
+              "dup:260148" (Duplikatprüfung eines Tickets).
               Fehlversuche werden gezählt, damit eine kaputte Datei nicht
               endlos wiederholt wird.
-Letzte Änderung: 2026-09-15
+Letzte Änderung: 2026-11-16
 """
 
 import sqlite3
@@ -98,6 +99,30 @@ class State:
                 "SELECT attempts FROM processed WHERE item_key = ?",
                 (str(item_key),)).fetchone()
         return row[0] < MAX_ATTEMPTS
+
+    def failed_tickets(self, prefix, min_age_seconds=0):
+        """Ticket-IDs fehlgeschlagener Einträge, die noch einen Versuch haben.
+
+        Nur Schlüssel mit dem Präfix (z. B. "dup:") und nur solche, deren
+        letzter Versuch mindestens min_age_seconds zurückliegt - ein
+        LLM-Ausfall soll nicht alle drei Versuche in drei Minuten
+        verbrauchen.
+        """
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT ticket_id FROM processed WHERE status = 'failed' "
+                "AND attempts < ? AND processed_at <= ? "
+                "AND substr(item_key, 1, ?) = ?",
+                (MAX_ATTEMPTS, int(time.time()) - int(min_age_seconds),
+                 len(prefix), prefix)).fetchall()
+        return [row[0] for row in rows]
+
+    def forget(self, item_key):
+        """Löscht einen Eintrag - als wäre er nie versucht worden."""
+        with self._lock:
+            self._connection.execute(
+                "DELETE FROM processed WHERE item_key = ?", (str(item_key),))
+            self._connection.commit()
 
     def _write(self, item_key, ticket_id, status, detail):
         with self._lock:

@@ -78,6 +78,28 @@ def test_anthropic_auto_selection(tmp_path, monkeypatch):
     assert cfg.check() == []
 
 
+def test_duplicates_defaults_and_overrides(tmp_path, monkeypatch):
+    _clean_env(monkeypatch)
+    cfg = load_config(config_path=str(tmp_path / "x.toml"),
+                      env_path=str(tmp_path / "x.env"))
+    assert cfg.duplicates.enabled is True
+    assert cfg.duplicates.tag_id == 181
+    assert cfg.duplicates.exclude_company_ids == [100000]
+    assert cfg.duplicates.max_matches == 3
+
+    toml = tmp_path / "config.toml"
+    toml.write_text("[duplicates]\nenabled = false\ntag_id = 0\n"
+                    "exclude_company_ids = [100000, 2261]\n"
+                    "services_head = 2\n", encoding="utf-8")
+    cfg = load_config(config_path=str(toml),
+                      env_path=str(tmp_path / "x.env"))
+    assert cfg.duplicates.enabled is False
+    assert cfg.duplicates.tag_id == 0
+    assert cfg.duplicates.exclude_company_ids == [100000, 2261]
+    assert cfg.duplicates.services_head == 2
+    assert cfg.duplicates.services_tail == 3          # Default bleibt
+
+
 def test_unknown_toml_keys_are_ignored(tmp_path, monkeypatch):
     _clean_env(monkeypatch)
     toml = tmp_path / "config.toml"

@@ -8,7 +8,7 @@ Beschreibung: Konfiguration von TANSS-Triage. Secrets kommen aus der .env
               werden relativ zum Projektstamm gesucht, damit ein systemd-Dienst
               und ein manueller Aufruf dieselben Werte sehen. check() liefert
               Klartextfehler statt Ausnahmen beim Laden.
-Letzte Änderung: 2026-09-15
+Letzte Änderung: 2026-11-16
 """
 
 import os
@@ -109,6 +109,32 @@ class OutageConfig:
 
 
 @dataclass
+class DuplicatesConfig:
+    # Duplikat-Erkennung: ein Ticket wird geprüft, sobald es erstmals bei
+    # einer Kundenfirma liegt - gegen die offenen Tickets desselben Kunden.
+    # Bei Verdacht: Tag (tag.id, 181 = "Prüfen! pot. Duplikat"; 0 = kein
+    # Tag) und ein Kommentar mit Verweis auf das andere Ticket. Braucht ein
+    # LLM; ohne ist die Erkennung aus.
+    enabled: bool = True
+    tag_id: int = 181
+    tag_name: str = "Prüfen! pot. Duplikat"     # nur fürs Log
+    # Firmen, deren Tickets nicht geprüft werden (100000 = ABASTU, die
+    # eigene Firma mit Newslettern, Lieferantenmails und Internem).
+    exclude_company_ids: list = field(default_factory=lambda: [100000])
+    # Obergrenze der offenen Tickets, die dem LLM zum Vergleich vorliegen.
+    max_candidates: int = 80
+    # So viele Duplikate nennt der Kommentar höchstens.
+    max_matches: int = 3
+    # So viele unklare Kandidaten werden mit Beschreibung und Leistungen
+    # nachgeprüft.
+    max_detail_candidates: int = 5
+    # Leistungen je Ticket in der Nachprüfung: bis head + tail Stück alle,
+    # sonst die ersten head und die letzten tail.
+    services_head: int = 3
+    services_tail: int = 3
+
+
+@dataclass
 class DbConfig:
     defaults_file: str = "~/.my.cnf"
     host: str = "localhost"
@@ -165,6 +191,7 @@ class Config:
     assignment: AssignmentConfig = field(default_factory=AssignmentConfig)
     departments: DepartmentConfig = field(default_factory=DepartmentConfig)
     outage: OutageConfig = field(default_factory=OutageConfig)
+    duplicates: DuplicatesConfig = field(default_factory=DuplicatesConfig)
     db: DbConfig = field(default_factory=DbConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     comment: CommentConfig = field(default_factory=CommentConfig)
@@ -233,6 +260,7 @@ def load_config(config_path=None, env_path=None):
     _fill(cfg.assignment, raw.get("assignment"))
     _fill(cfg.departments, raw.get("departments"))
     _fill(cfg.outage, raw.get("outage"))
+    _fill(cfg.duplicates, raw.get("duplicates"))
     _fill(cfg.db, raw.get("db"))
     _fill(cfg.storage, raw.get("storage"))
     _fill(cfg.comment, raw.get("comment"))

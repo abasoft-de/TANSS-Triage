@@ -3,13 +3,16 @@ Usage: from tanss_triage.worker import Worker
 
 Autor: SO, (c) abasoft GmbH 2026-09-10
 Datei: worker.py
-Beschreibung: Arbeitet die vom Webhook-Server gefüllte Queue sequenziell ab.
+Beschreibung: Arbeitet die vom Poller gefüllte Queue sequenziell ab. Jeder
+              Eintrag ist ein Paar (Handler, Ticket-ID) - so teilen sich
+              Audio-Verarbeitung und Duplikatprüfung eine Queue, und die
+              Reihenfolge bleibt erhalten (erst transkribieren, dann auf
+              Duplikate prüfen).
               Sequenziell mit Absicht: Whisper large-v3 lastet die CPU allein
               aus, und zwei parallele Transkriptionen wären zusammen
               langsamer als nacheinander. Ein Fehler bei einem Ticket beendet
-              den Worker nicht - der nächste Webhook soll weiter verarbeitet
-              werden.
-Letzte Änderung: 2026-09-10
+              den Worker nicht - das nächste soll weiter verarbeitet werden.
+Letzte Änderung: 2026-11-16
 """
 
 import logging
@@ -22,9 +25,8 @@ STOP = object()          # Sentinel in der Queue beendet den Worker
 
 
 class Worker:
-    def __init__(self, work_queue, processor):
+    def __init__(self, work_queue):
         self._queue = work_queue
-        self._processor = processor
         self._thread = threading.Thread(target=self._run, name="worker",
                                         daemon=True)
 
@@ -42,13 +44,14 @@ class Worker:
             item = self._queue.get()
             if item is STOP:
                 break
+            handler, ticket_id = item
             try:
-                self._processor.process_ticket(item)
+                handler(ticket_id)
             except Exception:
                 # process_ticket fängt Dokumentfehler selbst; hier landen
                 # nur noch Ausfälle davor (Ticket nicht lesbar, API weg).
                 LOG.exception("Ticket %s konnte nicht verarbeitet werden.",
-                              item)
+                              ticket_id)
             finally:
                 self._queue.task_done()
         LOG.info("Worker beendet.")
