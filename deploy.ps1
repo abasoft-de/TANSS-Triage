@@ -13,7 +13,7 @@
 #>
 
 param(
-    [string]$Server = $env:TANSS_MCP_SSH_HOST,
+    [string]$Server = "192.168.38.13",
     [string]$User = "tanss",
     [int]$Port = 22,
     [string]$Key = "",
@@ -22,13 +22,6 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
-if (-not $Server) {
-    Write-Host "FEHLER  Kein Server angegeben. Aufruf:" -ForegroundColor Red
-    Write-Host "  .\deploy.ps1 -Server tanss-host"
-    Write-Host "  (oder TANSS_MCP_SSH_HOST setzen)"
-    exit 2
-}
 
 $SourceDir = $PSScriptRoot
 
