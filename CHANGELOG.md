@@ -5,6 +5,74 @@ Alle nennenswerten Änderungen an TANSS-Triage stehen in dieser Datei.
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung folgt [SemVer](https://semver.org/lang/de/) (x.y.z).
 
+## [0.10.0] - 2026-11-26
+
+### Hinzugefügt
+
+- **Nachrichten der Praxis** in der Duplikatprüfung: weitere eingehende
+  Mails am Ticket (auch Kontaktformulare) und unsere Transkripte weiterer
+  Sprachnachrichten. Ungeduldige Nachfragen ("warten immer noch auf ...")
+  und wiederholte Anrufe stehen oft nur dort.
+  - Sichtung: je Ticket der Anfang der jüngsten weiteren Mail bzw.
+    Sprachnachricht. Nachprüfung: die ersten und letzten Nachrichten wie
+    bei den Leistungen.
+  - Nicht dabei: eigene Absender (neu: `[duplicates] own_senders`,
+    Default `@abasoft.de` - Eingangsbestätigungen), Starface-Mails,
+    ausgehende Mails und die Mail, aus der das Ticket entstand. Zitierte
+    Verläufe unter Antworten werden abgeschnitten. Das Mail-Datum kommt
+    aus dem Date-Header (`mails_headers`), die Tabelle `mails` hat keins.
+  - Transkripte kommen aus den Ticket-Kommentaren (`posting`, Typ 3,
+    Titel "Transkript: ..."); andere Kommentare, vor allem die eigenen
+    Duplikat-Hinweise, bleiben draußen.
+  - Ein Ticket "Sprachnachricht ohne Inhalt" zählt als Vergleich, wenn ein
+    späterer Anruf am selben Ticket Inhalt hatte.
+- **Passwörter werden geschwärzt**, bevor ein Text ans LLM geht
+  (`masking.py`, `[masking]`): Duplikat-Prompts und Transkripte für die
+  Starface-Aufbereitung. Drei Regeln - das Wort nach "Passwort:", "PIN
+  1234" usw.; passwortartige Wörter (Klein- und Großbuchstaben bzw.
+  Sonderzeichen und Ziffern, mindestens vier Wechsel der Zeichenart, z. B.
+  "Sommer2024!"); Base64-Zeilen. URLs, E-Mail-Adressen, IP-Adressen,
+  Zahlen, Pfade, Markup, Produktnamen wie "Eternus02" oder "Orga930M",
+  fremde Ticketnummern und Mengen wie "2xLenovo" bleiben stehen;
+  `keep_words` nimmt weitere aus. Erprobt an gut 12.000 echten
+  Tickettexten: geschwärzt wird in knapp 2 % der Texte, im Messlauf in 7
+  von 186 Prompts - alle zu Recht.
+- **Geplante Termine**: Leistungen mit Datum in der Zukunft gehen
+  gesondert als "geplant" in die Nachprüfung (höchstens zwei, die nächsten
+  zuerst). Die ersten und letzten Leistungen wählt sie nur noch aus den
+  vergangenen - vorab eingetragene Termine verdrängen den aktuellen Stand
+  nicht mehr.
+
+### Geändert
+
+- **Serien mit gleichem Betreff** (Monitoring, wiederholte Mails): Der
+  Hinweis nennt nur noch das älteste offene Ticket mit diesem Betreff -
+  das, in das zusammengeführt wird - und die Größe der Serie, statt der
+  drei jüngsten.
+- **Strenger bei inhaltsarmen neuen Tickets** (nur Rückrufbitte, ein
+  Stichwort wie "Drucker", leere Beschreibung): Beide LLM-Stufen melden
+  ein Duplikat nur noch mit konkretem Bezug - dieselbe Person oder
+  Rückrufnummer, dasselbe Gerät, ein Verweis auf das frühere Anliegen.
+- **Duplikat-Hinweise mit Begründung**: Jeder Treffer trägt im Kommentar
+  unter dem Betreff eine Begründung; weitere Treffer folgen nach einer
+  Trennlinie (Vorlage: Ticket 260976). Bisher begründete nur die
+  Nachprüfung, und auch das nur im Log.
+- Hinter dem Betreff steht die Ticketnummer nicht mehr - sie steht schon
+  in der Überschrift darüber.
+- Die Nachprüfung schickt keine Leistungen ohne eigene Aussage mehr ans
+  LLM: Protokolle verschickter Mails ("[Automatische Protokollierung des
+  Ticket-E-Mail-Versandes]", die Mail liegt ohnehin am Ticket),
+  Systemeinträge ("[System] ...") und reine Vermerke "Automatische
+  Rückantwort". Sie werden vor der Auswahl der ersten und letzten
+  Leistungen aussortiert und belegen keinen Platz mehr.
+  - Die Sichtung (Stufe 1) liefert dafür ein neues Pflichtfeld
+    `begruendung` je genanntem Ticket; die Nachprüfung schreibt ein bis
+    drei Sätze statt einem.
+  - Treffer ohne LLM bekommen eine feste Begründung (genannte
+    Ticketnummer bzw. gleicher Betreff).
+  - Im Log steht je Treffer eine Zeile `Duplikat von #… - <Begründung>`,
+    gleich in welcher Stufe er entstand.
+
 ## [0.9.0] - 2026-11-16
 
 ### Hinzugefügt

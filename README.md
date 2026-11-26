@@ -93,27 +93,92 @@ zugeordneten Starface-Tickets). Geprüft wird in drei Stufen:
      einer längeren Ruf- oder Seriennummer.
    - **Exakt gleicher Betreff** (Leerraum und Groß-/Kleinschreibung egal) -
      typisch bei mehreren Anrufen, für die das LLM denselben Betreff
-     vergibt.
+     vergibt, und bei Monitoring-Meldungen. Genannt wird nur das
+     **älteste** offene Ticket mit diesem Betreff - bei einer Serie das,
+     in das zusammengeführt wird -, die Begründung nennt die Größe der
+     Serie ("Es ist das 5. offene Ticket mit diesem Betreff seit ...").
 
-   Genannte Tickets stehen im Kommentar vor denen mit gleichem Betreff.
+   Genannte Tickets stehen im Kommentar vor dem mit gleichem Betreff.
 1. **Sichtung**: Das LLM bekommt das neue Ticket und die Liste der offenen
-   Tickets (Betreff, Anlagedatum, Status, Beschreibungsanfang) und nennt
-   sichere Duplikate und unklare Kandidaten.
-2. **Nachprüfung** nur der unklaren: Beschreibung und Leistungen - bei
-   vielen Leistungen die ersten und die letzten paar - entscheiden.
+   Tickets (Betreff, Anlagedatum, Status, Beschreibungsanfang, dazu der
+   Anfang der jüngsten weiteren Nachricht der Praxis) und nennt sichere
+   Duplikate und unklare Kandidaten, jeweils mit Begründung.
+2. **Nachprüfung** nur der unklaren: Beschreibung, Nachrichten der Praxis
+   und Leistungen entscheiden - bei vielen jeweils die ersten und die
+   letzten paar -, wieder mit Begründung. Vorab eingetragene Termine
+   (Leistungen mit Datum in der Zukunft) kommen gesondert als "geplant"
+   dazu, höchstens zwei, damit sie die letzten echten Notizen nicht
+   verdrängen. Nicht mitgeschickt werden Leistungen ohne eigene Aussage:
+   die automatischen Protokolle verschickter Mails ("[Automatische
+   Protokollierung des Ticket-E-Mail-Versandes]" - die Mail liegt ohnehin
+   am Ticket), Systemeinträge ("[System] ...") und reine Vermerke
+   "Automatische Rückantwort".
+
+**Nachrichten der Praxis** sind weitere Mails und Anrufe zum Ticket -
+ungeduldige Nachfragen und wiederholte Anrufe sind typische Duplikate:
+
+- **Eingehende Mails** am Ticket, auch Kontaktformulare. Nicht dabei: die
+  eigenen Adressen (`own_senders`, Default `@abasoft.de` -
+  Eingangsbestätigungen, interne Weiterleitungen), Starface-Mails (ihr
+  Inhalt steckt im Transkript), unsere ausgehenden Mails und die Mail, aus
+  der das Ticket entstand (sie steht als Beschreibung da). Zitierte
+  Verläufe unter einer Antwort werden abgeschnitten. Das Datum kommt aus
+  dem Date-Header (`mails_headers`), die Reihenfolge aus der Mail-ID.
+- **Sprachnachrichten**: unsere Transkript-Kommentare (`posting`, Titel
+  "Transkript: ..."), mit Datum. Andere Kommentare bleiben draußen - vor
+  allem unsere eigenen Duplikat-Hinweise. Beim Zusammenführen wandern die
+  Kommentare ins Zielticket mit; ruft eine Praxis mehrfach an, trägt das
+  Zielticket alle Transkripte.
+
+**Passwörter werden geschwärzt**, bevor irgendein Text an das LLM geht -
+hier wie bei der Starface-Aufbereitung (`[masking]`, `masking.py`).
+Tickettexte enthalten mitunter Zugangsdaten im Klartext (Postfach- und
+KIM-Passwörter in Mails, PINs in Notizen). Geschwärzt wird:
+
+- das Wort nach einem Schlüsselwort ("Passwort:", "Kennwort =", "PW:",
+  "PIN", "PUK", "Zugangsdaten") - mit Doppelpunkt immer, sonst nur, wenn
+  es eine Ziffer oder ein Sonderzeichen enthält ("PIN 1234" ja, "PIN
+  gesperrt" nein); das Schlüsselwort darf am Ende der Zeile davor stehen;
+- passwortartige Wörter: 8 bis 40 Zeichen, ein Teil zwischen den Trennern
+  (`- _ . / : , @ \ ( ) [ ]`) mit Kleinbuchstaben, Ziffern und
+  Großbuchstaben oder Sonderzeichen und mindestens vier Wechseln der
+  Zeichenart ("Sommer2024!", "kT9mP2qX");
+- Base64-Zeilen (Rauschen aus Mails).
+
+Nie geschwärzt werden URLs, E-Mail-Adressen, IP-Adressen, Zahlen, Datum
+und Telefonnummern, Pfade, Markup, Produktnamen aus einem Buchstaben- und
+einem Ziffernblock ("Eternus02", "Orga930M", "Befund2PACS"), fremde
+Ticketnummern ("Ticket#259570") und Mengen ("2xLenovo"); weitere Wörter
+über `keep_words`. Nicht erkannt werden Wort plus Ziffern ohne
+Schlüsselwort ("Sommer2024"), Passphrasen aus Kleinbuchstaben und
+gesprochene Passwörter. In TANSS selbst wird nichts geändert.
+
+Bei inhaltsarmen neuen Tickets (nur Rückrufbitte, ein Stichwort wie
+"Drucker", leere Beschreibung) verlangen beide LLM-Stufen einen konkreten
+Bezug - dieselbe Person oder Rückrufnummer, dasselbe Gerät, einen Verweis
+auf das frühere Anliegen. Dasselbe Thema allein reicht dort nicht.
 
 Bei Verdacht bekommt das **neue** Ticket den Tag "Prüfen! pot. Duplikat"
 und einen internen Kommentar. Der Kommentartitel nennt das erste
-Duplikat, der Text dessen Betreff und Nummer; weitere Treffer (insgesamt
-höchstens drei) folgen jeweils nach einer Leerzeile:
+Duplikat, der Text dessen Betreff und darunter die Begründung;
+weitere Treffer (insgesamt höchstens drei) folgen nach einer Trennlinie:
 
 ```
 Titel: Potenzielles Duplikat von Ticket #1234
-Text:  "Titel des anderen Tickets" #1234
+Text:  "Titel des anderen Tickets"
 
+       Begründung (ein bis drei Sätze vom LLM)
+
+       ----------------------------------------------------------------------------------------------------
        Potenzielles Duplikat von Ticket #2345
-       "Titel des anderen möglichen Duplikat-Tickets" #2345
+       "Titel des anderen möglichen Duplikat-Tickets"
+
+       Begründung
 ```
+
+Treffer ohne LLM tragen eine feste Begründung ("Das neue Ticket nennt die
+Ticketnummer #1234." bzw. "Beide Tickets tragen denselben Betreff."). Im
+Log steht je Treffer eine Zeile mit der Begründung.
 
 Was man wissen sollte:
 
@@ -124,8 +189,9 @@ Was man wissen sollte:
   es dann geprüft.
 - Trägt ein Ticket noch den generischen Starface-Betreff, **wartet die
   Prüfung auf die Transkription** und läuft direkt im Anschluss.
-  "Sprachnachricht ohne Inhalt" wird weder geprüft noch als Vergleich
-  herangezogen.
+  "Sprachnachricht ohne Inhalt" wird nicht geprüft und nur dann als
+  Vergleich herangezogen, wenn ein späterer Anruf am selben Ticket Inhalt
+  hatte.
 - Hat der Kunde kein weiteres offenes Ticket, gibt es keinen LLM-Aufruf.
 - Scheitert eine Prüfung (LLM oder Datenbank nicht erreichbar), wird sie
   nach zehn Minuten wiederholt, insgesamt höchstens dreimal.

@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass
 
 from .llm import LlmError
+from .masking import mask_secrets
 
 LOG = logging.getLogger("tanss_triage.triage")
 
@@ -110,7 +111,11 @@ Praxisausfall - gesondert kennzeichnen:
   Kartenlesen), solange in EVA weitergearbeitet werden kann. Im Zweifel
   false - ein Fehlalarm macht ein Ticket unnötig dringend.
 - Den Betreff formulierst du wie immer; die Kennzeichnung als
-  Serverausfall setzt das Programm selbst davor.\
+  Serverausfall setzt das Programm selbst davor.
+
+Wörter, die wie Passwörter oder Zugangsdaten aussehen, sind im Transkript
+durch [geschwärzt] ersetzt - übernimm sie weder in Betreff noch
+Beschreibung.\
 """
 
 
@@ -256,8 +261,9 @@ def run_triage(llm, transcript, caller_number="", voicemail_box="",
         return TriageResult(betreff=EMPTY_TRANSCRIPT_SUBJECT,
                             beschreibung=EMPTY_TRANSCRIPT_CONTENT,
                             melder_id=None)
-    user = build_user_prompt(transcript, caller_number, voicemail_box,
-                             contacts)
+    # Zugangsdaten gehören nicht in den API-Aufruf (masking.py)
+    user = mask_secrets(build_user_prompt(transcript, caller_number,
+                                          voicemail_box, contacts))
     try:
         answer = llm.complete(build_system_prompt(extra_abbreviations), user,
                               schema=TRIAGE_SCHEMA)

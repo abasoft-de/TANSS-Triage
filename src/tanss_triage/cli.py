@@ -29,10 +29,11 @@ from .assigner import multi_company_checker
 from .config import load_config
 from .db import (fetch_assignment_labels, fetch_mail_attachments,
                  fetch_ticket, open_company_tickets, phone_number_roles,
-                 ticket_services)
+                 ticket_messages, ticket_services)
 from .duplicates import DuplicateChecker
 from .llm import build_llm
 from .logging_setup import setup_logging
+from .masking import configure as configure_masking
 from .poller import Poller
 from .processor import Processor
 from .state import State
@@ -94,6 +95,8 @@ def build_duplicate_checker(cfg, client, state, llm):
         candidates_lookup=lambda company_id, exclude_id: open_company_tickets(
             cfg.db, company_id, exclude_id, cfg.duplicates.max_candidates),
         services_lookup=lambda ticket_ids: ticket_services(cfg.db,
+                                                           ticket_ids),
+        messages_lookup=lambda ticket_ids: ticket_messages(cfg.db,
                                                            ticket_ids))
 
 
@@ -165,6 +168,7 @@ def main(argv=None):
     cfg = load_config(config_path=arguments.config)
     cfg.dry_run = bool(arguments.dry_run)
     setup_logging(cfg.logging)
+    configure_masking(cfg.masking.enabled, cfg.masking.keep_words)
 
     problems = cfg.check()
     if problems:

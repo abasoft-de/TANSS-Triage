@@ -8,7 +8,7 @@ Beschreibung: Konfiguration von TANSS-Triage. Secrets kommen aus der .env
               werden relativ zum Projektstamm gesucht, damit ein systemd-Dienst
               und ein manueller Aufruf dieselben Werte sehen. check() liefert
               Klartextfehler statt Ausnahmen beim Laden.
-Letzte Änderung: 2026-11-16
+Letzte Änderung: 2026-11-26
 """
 
 import os
@@ -132,6 +132,21 @@ class DuplicatesConfig:
     # sonst die ersten head und die letzten tail.
     services_head: int = 3
     services_tail: int = 3
+    # Absender (Teilstring), deren Mails nicht als Nachricht der Praxis
+    # zählen: die eigenen Adressen - Eingangsbestätigungen und interne
+    # Weiterleitungen. Starface-Mails fallen über [starface] sender_patterns
+    # ohnehin weg (ihr Inhalt steckt im Transkript).
+    own_senders: list = field(default_factory=lambda: ["@abasoft.de"])
+
+
+@dataclass
+class MaskingConfig:
+    # Passwörter und Zugangsdaten werden geschwärzt, bevor ein Text ans LLM
+    # geht (masking.py). keep_words: Wörter, die nie geschwärzt werden -
+    # technische Namen, die passwortartig aussehen (z. B. Servernamen aus
+    # Monitoring-Mails).
+    enabled: bool = True
+    keep_words: list = field(default_factory=list)
 
 
 @dataclass
@@ -192,6 +207,7 @@ class Config:
     departments: DepartmentConfig = field(default_factory=DepartmentConfig)
     outage: OutageConfig = field(default_factory=OutageConfig)
     duplicates: DuplicatesConfig = field(default_factory=DuplicatesConfig)
+    masking: MaskingConfig = field(default_factory=MaskingConfig)
     db: DbConfig = field(default_factory=DbConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     comment: CommentConfig = field(default_factory=CommentConfig)
@@ -261,6 +277,7 @@ def load_config(config_path=None, env_path=None):
     _fill(cfg.departments, raw.get("departments"))
     _fill(cfg.outage, raw.get("outage"))
     _fill(cfg.duplicates, raw.get("duplicates"))
+    _fill(cfg.masking, raw.get("masking"))
     _fill(cfg.db, raw.get("db"))
     _fill(cfg.storage, raw.get("storage"))
     _fill(cfg.comment, raw.get("comment"))

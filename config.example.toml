@@ -114,6 +114,21 @@ max_detail_candidates = 5
 # die ersten head und die letzten tail.
 services_head = 3
 services_tail = 3
+# Absender (Teilstring), deren Mails nicht als Nachricht der Praxis zählen:
+# die eigenen Adressen (Eingangsbestätigungen, interne Weiterleitungen).
+# Starface-Mails fallen über [starface] sender_patterns ohnehin weg.
+own_senders = ["@abasoft.de"]
+
+[masking]
+# Passwörter und Zugangsdaten werden geschwärzt ("[geschwärzt]"), bevor ein
+# Text an das LLM geht - Transkripte für Betreff/Beschreibung ebenso wie
+# alles, was die Duplikat-Erkennung schickt. Geschwärzt wird das Wort nach
+# "Passwort:", "PIN 1234" usw., passwortartige Wörter ("Sommer2024!",
+# "kT9mP2qX") und Base64-Zeilen. In TANSS selbst ändert sich nichts.
+enabled = true
+# Wörter, die nie geschwärzt werden - technische Namen, die passwortartig
+# aussehen, z. B. Servernamen aus Monitoring-Mails.
+keep_words = []                   # z. B. ["Veeam_WinSRV2K19"]
 
 [db]
 # Read-only-Zugriff auf die TANSS-MariaDB für den Mehrfach-Firmen-Check

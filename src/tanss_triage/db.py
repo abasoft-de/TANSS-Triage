@@ -16,6 +16,7 @@ Beschreibung: Read-only-Blicke in die TANSS-MariaDB (Zugangsdaten aus
 Letzte Änderung: 2026-11-16
 """
 
+import email.utils
 import logging
 import os
 import re
@@ -26,6 +27,10 @@ LOG = logging.getLogger("tanss_triage.db")
 STATUS_DONE = 1000
 # link_type_id eines Tickets im Änderungsprotokoll (entity_changes).
 LINK_TYPE_TICKET = 11
+# posting.typID eines Ticket-Kommentars (1 News, 2 Knowledge Base,
+# 3 Kommentar) und der Titel unserer Transkript-Kommentare.
+POSTING_COMMENT = 3
+TRANSCRIPT_TITLE_PATTERN = "Transkript:%"
 
 
 def _query(db_cfg, sql, params):
@@ -245,6 +250,66 @@ def ticket_services(db_cfg, ticket_ids, text_limit=600):
         WHERE bugID IN (%s) AND COALESCE(geloescht, 0) = 0
         ORDER BY bugID, datum, ID
         """ % placeholders, (int(text_limit), *ticket_ids))
+
+
+def ticket_messages(db_cfg, ticket_ids, text_limit=1500):
+    """Die Nachrichten der Praxis zu mehreren Tickets.
+
+    Zwei Quellen in einer Abfrage:
+    - eingehende Mails am Ticket (bug_mails -> mails, inbound = 'Y'). Die
+      Tabelle mails hat kein Datum; es kommt aus dem Date-Header
+      (mails_headers, Primärschlüssel mailID + headerName). Die
+      Reihenfolge ergibt die Mail-ID - der Header ist die Uhr des
+      Absenders. Ohne Klartextteil kommt das HTML (der Aufrufer macht Text
+      daraus).
+    - unsere Transkript-Kommentare: Kommentare stehen in posting mit
+      typID 3, kommentarVonID ist das Ticket; beim Zusammenführen wandern
+      sie ins Zielticket mit. Erkannt am Titel "Transkript: ...".
+
+    Liefert Zeilen (ticket_id, kind "mail"|"voicemail", id, date, sender,
+    text) - oder None, wenn die Datenbank nicht verfügbar ist. Welche
+    davon zählen (eigene Absender, Starface, Ursprungsmail), entscheidet
+    der Aufrufer.
+    """
+    ticket_ids = [int(ticket_id) for ticket_id in ticket_ids or []]
+    if not ticket_ids:
+        return []
+    placeholders = ", ".join(["%s"] * len(ticket_ids))
+    rows = _query(db_cfg, """
+        SELECT bm.bugID AS ticket_id, 'mail' AS kind, m.ID AS id,
+               0 AS date, m.senderEMail AS sender,
+               LEFT(IF(m.bodyPlain <> '', m.bodyPlain, m.body), %%s) AS text,
+               (SELECT h.headerValue FROM mails_headers h
+                WHERE h.mailID = m.ID AND h.headerName = 'Date')
+                   AS date_header
+        FROM bug_mails bm
+        JOIN mails m ON m.ID = bm.mailID
+        WHERE bm.bugID IN (%s) AND m.inbound = 'Y'
+        UNION ALL
+        SELECT p.kommentarVonID, 'voicemail', p.ID, p.datum, '',
+               LEFT(p.inhalt, %%s), NULL
+        FROM posting p
+        WHERE p.typID = %%s AND p.kommentarVonID IN (%s)
+          AND p.ueberschrift LIKE %%s
+        """ % (placeholders, placeholders),
+        (int(text_limit), *ticket_ids, int(text_limit), POSTING_COMMENT,
+         *ticket_ids, TRANSCRIPT_TITLE_PATTERN))
+    for row in rows or []:
+        header = row.pop("date_header", None)
+        if row.get("kind") == "mail":
+            row["date"] = mail_header_timestamp(header)
+    return rows
+
+
+def mail_header_timestamp(header):
+    """Unix-Zeit aus einem Date-Header ("Wed, 25 Nov 2026 09:25:29 +0100");
+    0, wenn er fehlt oder kaputt ist."""
+    if not header:
+        return 0
+    try:
+        return int(email.utils.parsedate_to_datetime(header).timestamp())
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return 0
 
 
 def phone_number_roles(db_cfg, number, company_id):
